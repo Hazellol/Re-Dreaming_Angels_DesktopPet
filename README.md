@@ -32,16 +32,6 @@
 2. 欢迎她入住你的桌面 🎉
 3. 右键某只 →「💬 聊天…」或**双击她**，体验角色扮演对话（首次需在控制台填 API Key）
 
-### 📦 打包分发（无需 Node 的"双击即玩"版）
-
-```bat
-npm run pack:portable      # dist/妄想天使桌宠-便携版.exe（单文件，双击即玩）
-npm run pack:installer     # dist/妄想天使桌宠-安装版-Setup-2.0.0.exe（NSIS 安装程序）
-```
-
-- 打包内容：main/preload/src/assets + asar；**运行数据自动落在** `%APPDATA%\ReDreamingAngels\data`（聊天历史/AI 配置，打包版不会写项目目录）
-- 首次打包需联网下载构建组件（winCodeSign/NSIS，仅一次，缓存于 `%LOCALAPPDATA%\electron-builder\Cache`）
-
 ### 🤖 AI 对话配置
 
 1. 右键 →「🔧 对话配置」（控制台）
