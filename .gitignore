@@ -1,0 +1,14 @@
+# ===== 妄想天使桌宠 .gitignore =====
+# 依赖与构建
+node_modules/
+dist/
+
+# 运行数据（⚠️ AI 配置含 API Key，绝不上传；聊天历史为隐私）
+data/
+
+# 日志与临时
+*.log
+shot.png
+panel-shot.png
+dbg_run.log
+wintog_rt.log

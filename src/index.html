@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>妄想天使桌宠</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    background: transparent;
+    user-select: none; -webkit-user-select: none;
+    cursor: default;
+  }
+  #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  /* 头顶对话气泡（还原原版：白底粗黑描边+居中台词+黑色描边尾巴） */
+  .popover {
+    position: fixed; left: 0; top: 0;
+    transform: translate(-50%, -100%);
+    background: #ffffff;
+    color: #3f3140;
+    font: 600 14px/1.7 "Microsoft YaHei", "PingFang SC", sans-serif;
+    text-align: center;
+    padding: 10px 18px;
+    border-radius: 20px;
+    border: 3px solid #3f3140;
+    box-shadow: 0 5px 14px rgba(40, 20, 40, .25);
+    max-width: 320px;
+    min-width: 120px;
+    white-space: pre-wrap;
+    pointer-events: none;
+    display: none;
+    opacity: 0;
+    transition: opacity .18s ease;
+    z-index: 10;
+  }
+  /* 防出屏锚点：上(默认) / 右 / 左（聊天气泡字数多时按 上→右→左 换位） */
+  .popover.pos-right { transform: translate(0, -50%); }
+  .popover.pos-left { transform: translate(-100%, -50%); }
+  .popover.show { display: block; opacity: 1; }
+  /* 气泡尾巴按位置指向角色：上=朝下 / 右=朝左 / 左=朝右 */
+  .popover::after {
+    content: ''; position: absolute;
+    left: 50%; bottom: -13px; transform: translateX(-50%);
+    border: 12px solid transparent;
+    border-top-color: #3f3140;
+    border-bottom: none;
+  }
+  .popover::before {
+    content: ''; position: absolute;
+    left: 50%; bottom: -6px; transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: #ffffff;
+    border-bottom: none;
+    z-index: 1;
+  }
+  .popover.pos-right::after {
+    left: -18px; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: 12px solid transparent;
+    border-top-color: transparent; border-bottom: none;
+    border-right-color: #3f3140; border-left: none;
+  }
+  .popover.pos-right::before {
+    left: -10px; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: 8px solid transparent;
+    border-top-color: transparent; border-bottom: none;
+    border-right-color: #ffffff; border-left: none;
+    z-index: 1;
+  }
+  .popover.pos-left::after {
+    right: -18px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: 12px solid transparent;
+    border-top-color: transparent; border-bottom: none;
+    border-left-color: #3f3140; border-right: none;
+  }
+  .popover.pos-left::before {
+    right: -10px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: 8px solid transparent;
+    border-top-color: transparent; border-bottom: none;
+    border-left-color: #ffffff; border-right: none;
+    z-index: 1;
+  }
+  /* 等待回复的"..."动画（三点依次明暗） */
+  .popover .dot { animation: dotBlink 1.2s ease-in-out infinite; }
+  .popover .dot:nth-child(2) { animation-delay: .2s; }
+  .popover .dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes dotBlink { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+  .popover::after {
+    content: ''; position: absolute;
+    left: 50%; bottom: -13px; transform: translateX(-50%);
+    border: 12px solid transparent;
+    border-top-color: #3f3140;
+    border-bottom: none;
+  }
+  .popover::before {
+    content: ''; position: absolute;
+    left: 50%; bottom: -6px; transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: #ffffff;
+    border-bottom: none;
+    z-index: 1;
+  }
+  /* 音量面板 */
+  #vol-panel {
+    position: fixed; left: 0; top: 0;
+    width: 250px;
+    background: rgba(255,255,255,.97);
+    border: 3px solid #3f3140;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    padding: 12px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+    color: #3f3140;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+  }
+  #vol-panel .sp-head {
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #vol-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #vol-panel .sp-x:hover { color: #e0559a; }
+  #vol-panel .vp-row { display: flex; align-items: center; gap: 10px; }
+  #vol-panel .vp-mute {
+    font-size: 20px; line-height: 1; cursor: pointer;
+    color: #3f3140; padding: 0 2px; width: 34px; text-align: center;
+  }
+  #vol-panel .vp-mute.muted { color: #b09aa8; }
+  #vol-panel input[type=range] { flex: 1; accent-color: #e0559a; }
+  #vol-panel .vp-val {
+    font: 700 13px/1 "Microsoft YaHei", sans-serif;
+    min-width: 38px; text-align: right;
+  }
+  /* 音乐播放器（可爱简约：粉渐变头 / 大圆播放钮 / 音符律动） */
+  #music-panel {
+    position: fixed; left: 0; top: 0;
+    width: 300px;
+    background: linear-gradient(180deg, #fff7fb 0%, #ffffff 22%);
+    border: 3px solid #3f3140;
+    border-radius: 22px;
+    box-shadow: 0 8px 26px rgba(120, 40, 90, .28);
+    padding: 4px 14px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+    color: #3f3140;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  #music-panel .sp-head {
+    font: 800 14px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 8px -14px 10px;
+    padding: 8px 14px 8px 16px;
+    background: linear-gradient(90deg, #ffd9ec, #ffebf5 70%, #fff);
+  }
+  #music-panel .sp-head > span:first-child { display: flex; align-items: center; gap: 6px; }
+  #music-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #music-panel .sp-x:hover { color: #e0559a; }
+  /* 曲目名（粉色渐变卡，可展开列表） */
+  #music-panel .mp-track {
+    position: relative;
+    text-align: center; font: 700 13px/1.5 "Microsoft YaHei", sans-serif;
+    color: #c0408a;
+    background: linear-gradient(120deg, #ffe3f0, #fff0f8 55%, #ffe9f4);
+    border: 2px solid #ffc9e2;
+    border-radius: 13px; padding: 8px 10px; margin-bottom: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; user-select: none;
+    transition: transform .14s ease, box-shadow .14s ease;
+  }
+  #music-panel .mp-track:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(224,85,154,.25); }
+  #music-panel .mp-track .mp-arrow { opacity: .6; font-size: 11px; }
+  /* 音符律动（播放中 mp-play.playing 时跳动） */
+  #music-panel .mp-track .mp-note {
+    display: inline-block; margin-right: 5px; font-size: 14px;
+    animation: none;
+  }
+  #music-panel.playing .mp-track .mp-note { animation: noteBounce .8s ease-in-out infinite; }
+  @keyframes noteBounce { 0%,100% { transform: translateY(0); } 25% { transform: translateY(-3px); } 50% { transform: translateY(0); } 75% { transform: translateY(-2px); } }
+  /* 曲目列表 */
+  #music-panel .mp-list {
+    display: none;
+    max-height: 168px; overflow-y: auto;
+    border: 2px solid #ffe0ee; border-radius: 12px;
+    margin-bottom: 9px; padding: 4px;
+    background: #fffafd;
+  }
+  #music-panel .mp-list.open { display: block; }
+  #music-panel .mp-item {
+    padding: 6px 10px; border-radius: 9px; cursor: pointer;
+    font: 500 12px/1.5 "Microsoft YaHei", sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    position: relative; padding-left: 24px;
+    transition: background .12s ease;
+  }
+  #music-panel .mp-item::before {
+    content: '♪'; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; color: transparent; transition: color .12s ease;
+  }
+  #music-panel .mp-item:hover { background: #ffe9f4; color: #e0559a; }
+  #music-panel .mp-item.cur { background: linear-gradient(90deg, #ffd9ec, #ffe9f4); color: #d0408a; font-weight: 700; }
+  #music-panel .mp-item.cur::before { color: #e0559a; }
+  /* 进度条 */
+  #music-panel .mp-prog { margin-bottom: 7px; }
+  #music-panel .mp-prog input { width: 100%; accent-color: #e0559a; }
+  #music-panel input[type=range] {
+    -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px;
+    background: #ffd9ec; outline: none; cursor: pointer;
+  }
+  #music-panel input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: #e0559a; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(224,85,154,.5);
+    transition: transform .12s ease;
+  }
+  #music-panel input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+  #music-panel .mp-time {
+    display: flex; justify-content: space-between;
+    color: #9a8f9e; font: 11px/1.4 "Microsoft YaHei", sans-serif;
+    margin-top: 2px;
+  }
+  /* 控制按钮：大圆白底粉描边 */
+  #music-panel .mp-ctrl { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 10px; }
+  #music-panel .mp-btn {
+    font-size: 19px; cursor: pointer; line-height: 1;
+    width: 34px; height: 34px; text-align: center; color: #3f3140;
+    background: #fff; border: 2px solid #f2cfe2; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .12s ease, color .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  #music-panel .mp-btn:hover { color: #e0559a; border-color: #e0559a; transform: scale(1.12); box-shadow: 0 3px 8px rgba(224,85,154,.25); }
+  #music-panel .mp-btn.play { font-size: 26px; width: 44px; height: 44px; background: #e0559a; color: #fff; border-color: #d0408a; }
+  #music-panel .mp-btn.play:hover { color: #fff; background: #d0408a; transform: scale(1.08); }
+  /* BGM 音量 */
+  #music-panel .mp-volrow { display: flex; align-items: center; gap: 8px; color: #9a8f9e; }
+  #music-panel .mp-volrow .mp-vol-ico { font-size: 14px; }
+  /* 聊天面板（AI 对话：三小只角色扮演） */
+  #chat-panel {
+    position: fixed; left: 24px; bottom: 24px;
+    width: 420px;
+    max-height: min(560px, calc(100vh - 60px));
+    background: linear-gradient(180deg, #fff7fb 0%, #ffffff 18%);
+    border: 3px solid #3f3140;
+    border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(120, 40, 90, .3);
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    color: #3f3140;
+    font: 500 13px/1.7 "Microsoft YaHei", sans-serif;
+  }
+  /* 互聊设置面板（样式与四面板统一） */
+  #chatter-panel {
+    position: fixed; left: 0; top: 0;
+    width: 272px;
+    background: rgba(255,255,255,.97);
+    border: 3px solid #3f3140;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    padding: 12px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+    color: #3f3140;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+  }
+  #chatter-panel .sp-head {
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #chatter-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #chatter-panel .sp-x:hover { color: #e0559a; }
+  #chatter-panel .ct-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+  #chatter-panel .ct-row > label { flex: 0 0 86px; font: 600 12px/1.4 "Microsoft YaHei"; color: #7a6a74; }
+  #chatter-panel .ct-row input[type=range] { flex: 1; accent-color: #e0559a; }
+  #chatter-panel .ct-row .ct-val { flex: 0 0 46px; font: 700 12px/1 "Microsoft YaHei"; color: #d0408a; text-align: right; }
+  #chatter-panel .ct-hint { color: #b09aa8; font-size: 11px; line-height: 1.7; margin-top: 6px; }
+  #chat-panel .cp-head, #bc-history .cp-head {
+    font: 800 14px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px;
+    background: linear-gradient(90deg, #ffd9ec, #ffebf5 70%, #fff);
+    cursor: grab;
+  }
+  #chat-panel .cp-head:active { cursor: grabbing; }
+  #chat-panel .cp-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #7dd8a0; box-shadow: 0 0 6px rgba(125,216,160,.8);
+  }
+  #chat-panel .cp-head #cp-title { flex: 1; }
+  #chat-panel .cp-head .sp-x, #bc-history .cp-head .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #chat-panel .cp-head .sp-x, #bc-history .cp-head .sp-x:hover { color: #e0559a; }
+  #chat-panel .cp-head .cp-clear { cursor: pointer; color: #b09aa8; font-size: 13px; margin-right: 6px; }
+  #chat-panel .cp-head .cp-clear:hover { color: #c05050; }
+  #chat-panel .cp-body, #bc-history .cp-body {
+    flex: 1; overflow-y: auto; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 300px; max-height: 420px;
+    background: #fffdfe;
+  }
+  #chat-panel .cp-msg, #bc-history .cp-msg {
+    max-width: 78%; padding: 8px 12px; border-radius: 14px;
+    white-space: pre-wrap; word-break: break-word;
+    animation: popIn .18s cubic-bezier(.2,.9,.3,1.1);
+  }
+  #chat-panel .cp-msg.user, #bc-history .cp-msg.user {
+    align-self: flex-end;
+    background: #ffd9ec; color: #a03a72;
+    border: 2px solid #ffc4e0; border-bottom-right-radius: 4px;
+  }
+  #chat-panel .cp-msg.bot, #bc-history .cp-msg.bot {
+    align-self: flex-start;
+    background: #fff; color: #3f3140;
+    border: 2px solid #eadbe7; border-bottom-left-radius: 4px;
+  }
+  #chat-panel .cp-msg.cp-think, #bc-history .cp-msg.cp-think { color: #b09aa8; font-style: italic; }
+  #chat-panel .cp-msg.cp-err, #bc-history .cp-msg.cp-err { color: #c05050; border-color: #f2c6c6; background: #fff6f6; }
+  /* 消息操作条（复制/编辑）：常驻显示（预留位置，不从消息间"挤出来"） */
+  #chat-panel .cp-item, #bc-history .cp-item { display: flex; flex-direction: column; max-width: 100%; }
+  #chat-panel .cp-item.bot, #bc-history .cp-item.bot { align-items: flex-start; }
+  #chat-panel .cp-item.user, #bc-history .cp-item.user { align-items: flex-end; }   /* 用户消息贴住右边 */
+  #chat-panel .cp-item .cp-ops, #bc-history .cp-item .cp-ops {
+    display: flex; gap: 4px; margin: 2px 6px 0;
+    font: 600 11px/1.3 "Microsoft YaHei", sans-serif; color: #b09aa8;
+  }
+  #chat-panel .cp-ops .op, #bc-history .cp-ops .op {
+    cursor: pointer; padding: 2px 7px; border-radius: 8px; background: #fff;
+    border: 1.5px solid #eadbe7; transition: color .12s ease, border-color .12s ease;
+  }
+  #chat-panel .cp-ops .op, #bc-history .cp-ops .op:hover { color: #e0559a; border-color: #f5c0da; }
+  /* 输入框右键菜单（复制/粘贴/剪切/全选） */
+  #input-ctx {
+    position: fixed; z-index: 55; display: none;
+    background: rgba(255,255,255,.98); border: 2px solid #3f3140; border-radius: 12px;
+    padding: 4px; min-width: 110px; box-shadow: 0 6px 18px rgba(40,20,40,.25);
+    color: #3f3140; font: 600 12px/1.5 "Microsoft YaHei", sans-serif; user-select: none;
+  }
+  #input-ctx .ic-item { padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+  #input-ctx .ic-item:hover { background: #ffe3f0; color: #e0559a; }
+  /* 气泡聊天：历史查看按钮 + 历史面板（不挡角色：紧跟输入框右侧） */
+  #bc-hist-btn {
+    cursor: pointer; color: #b06a93; font-size: 13px; padding: 2px 4px;
+    transition: color .12s ease, transform .12s ease;
+  }
+  #bc-hist-btn:hover { color: #e0559a; transform: translateY(-1px); }
+  #bc-history {
+    position: fixed; z-index: 30; display: none;
+    width: 352px; max-height: min(480px, calc(100vh - 120px));
+    overflow: hidden;
+    background: linear-gradient(180deg, #fff7fb 0%, #ffffff 18%);
+    border: 3px solid #3f3140; border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(120, 40, 90, .3);
+    user-select: none; color: #3f3140;
+    font: 500 13px/1.7 "Microsoft YaHei", sans-serif;
+  }
+  #bc-history .cp-head { border-radius: 19px 19px 0 0; }
+  #bc-history .bh-item { display: none; }   /* 旧样式退役（改用 cp-* 结构） */
+  #bc-history .bh-title { color: #d0408a; font: 800 12px/1.6 "Microsoft YaHei", sans-serif; }
+  #bc-history .cp-head .bh-title { flex: 1; font-size: 13px; }
+  /* 编辑重发：消息原位变成的输入框 */
+  #chat-panel .cp-msg.cp-edit {
+    width: 78%; min-height: 40px; resize: none; box-sizing: border-box;
+    background: #fffdfe; color: #3f3140;
+    border: 2px solid #e0559a; outline: none;
+    font: 500 13px/1.7 "Microsoft YaHei", sans-serif;
+    padding: 8px 12px; border-radius: 14px;
+  }
+  #chat-panel .cp-input-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-top: 2px dashed #f0e0ec; background: #fff;
+  }
+  #chat-panel #cp-input {
+    flex: 1; padding: 9px 12px;
+    border: 2px solid #ecdce8; border-radius: 12px;
+    font: 500 13px/1.4 "Microsoft YaHei", sans-serif; color: #3f3140;
+    outline: none; background: #fffdfe;
+  }
+  #chat-panel #cp-input:focus { border-color: #e0559a; }
+  #chat-panel #cp-send {
+    flex: 0 0 auto; padding: 9px 16px; border-radius: 12px;
+    background: #e0559a; color: #fff; font: 700 13px/1.2 "Microsoft YaHei", sans-serif;
+    cursor: pointer; transition: transform .12s ease, background .12s ease;
+  }
+  #chat-panel #cp-send:hover { background: #d0408a; transform: translateY(-1px); }
+  #chat-panel #cp-send.busy { opacity: .55; pointer-events: none; }
+  #chat-panel .cp-hint { color: #b09aa8; font: 11px/1.4 "Microsoft YaHei", sans-serif; text-align: center; padding: 4px 0 3px; }
+  /* 气泡聊天模式：角色下方的输入框 */
+  #bubble-chat {
+    position: fixed; left: 0; top: 0;
+    display: none;
+    align-items: center; gap: 8px;
+    padding: 9px 11px;
+    background: rgba(255, 255, 255, .97);
+    border: 3px solid #3f3140;
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(120, 40, 90, .28);
+    z-index: 30;
+    user-select: none;
+  }
+  #bubble-chat #bc-input {
+    width: 220px; padding: 8px 12px;
+    border: 2px solid #ecdce8; border-radius: 11px;
+    font: 500 13px/1.4 "Microsoft YaHei", sans-serif; color: #3f3140;
+    outline: none; background: #fffdfe;
+  }
+  #bubble-chat #bc-input:focus { border-color: #e0559a; }
+  #bubble-chat #bc-send {
+    padding: 8px 14px; border-radius: 11px;
+    background: #e0559a; color: #fff; font: 700 13px/1.2 "Microsoft YaHei", sans-serif;
+    cursor: pointer; transition: transform .12s ease, background .12s ease;
+  }
+  #bubble-chat #bc-send:hover { background: #d0408a; transform: translateY(-1px); }
+  #bubble-chat #bc-send.busy { opacity: .55; pointer-events: none; }
+  #bubble-chat #bc-close { color: #b09aa8; font-size: 13px; cursor: pointer; padding: 2px 4px; }
+  #bubble-chat #bc-close:hover { color: #c05050; }
+  /* 控制台：左侧竖栏按钮动画 */
+  .sidebar-btn { transition: transform .15s ease, background .15s ease, box-shadow .15s ease; }
+  .sidebar-btn:hover { transform: translateY(-2px); }
+  .sidebar-btn.active { background: linear-gradient(135deg, #ffe3f0, #ffd0e6) !important; border-color: #e0559a !important; box-shadow: 0 4px 12px rgba(224,85,154,.3); }
+  .view-swap { animation: viewIn .22s cubic-bezier(.2,.9,.3,1.05); }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* 动画：所有弹层打开时 pop-in */
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.92) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  #ctx-menu, #size-panel, #freq-panel, #vol-panel, #music-panel, #dialog {
+    animation: popIn .17s cubic-bezier(.2,.9,.3,1.1);
+  }
+  .cm-item { transition: background .12s ease, transform .12s ease, color .12s ease; }
+  .cm-item:hover { transform: translateX(3px); }
+  .sp-x { transition: color .12s ease, transform .12s ease; }
+  .sp-x:hover { transform: scale(1.15); }
+  #music-panel .mp-ctrl { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 10px; }
+  #music-panel .mp-btn {
+    font-size: 20px; cursor: pointer; line-height: 1;
+    width: 30px; text-align: center; color: #3f3140;
+  }
+  #music-panel .mp-btn:hover { color: #e0559a; }
+  #music-panel .mp-btn.play { font-size: 24px; }
+  #music-panel .mp-volrow { display: flex; align-items: center; gap: 8px; color: #9a8f9e; }
+  #music-panel input[type=range] { flex: 1; accent-color: #e0559a; }
+  /* 特训故事对话框（还原 galgame 白色圆角对话框风） */
+  #dialog {
+    position: fixed; left: 50%; bottom: 4%; transform: translateX(-50%);
+    width: min(78vw, 860px);
+    background: #ffffff;
+    border: 3px solid #3f3140;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    padding: 14px 20px 12px;
+    z-index: 20;
+    display: none;
+    cursor: pointer;
+  }
+  #dialog.show { display: block; }
+  #dialog .d-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #dialog .d-name {
+    color: #e0559a; font: 700 14px/1 "Microsoft YaHei", sans-serif;
+    background: #ffe3f0; border-radius: 8px; padding: 4px 10px;
+  }
+  #dialog .d-scene { color: #9a8f9e; font: 12px/1 "Microsoft YaHei", sans-serif; flex: 1; }
+  #dialog .d-btn {
+    color: #9a8f9e; font: 13px/1 "Microsoft YaHei", sans-serif;
+    flex: 0 0 auto; pointer-events: auto;
+  }
+  #dialog .d-btn:hover { color: #e0559a; }
+  #dialog .d-text {
+    color: #3f3140; font: 500 15px/1.8 "Microsoft YaHei", "PingFang SC", sans-serif;
+    min-height: 48px;
+  }
+  #dialog .d-next {
+    color: #cf9ab8; font: 12px/1 "Microsoft YaHei", sans-serif;
+    text-align: right; margin-top: 4px;
+    animation: dblink 1.2s ease-in-out infinite;
+  }
+  @keyframes dblink { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+  /* 千夏大小控制面板（桌面版：滑块 + 数值） */
+  #size-panel {
+    position: fixed; right: 26px; bottom: 130px;
+    width: 220px;
+    background: rgba(255,255,255,.96);
+    border: 3px solid #3f3140;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    padding: 12px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+  }
+  #size-panel .sp-head {
+    color: #3f3140; font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #size-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #size-panel .sp-x:hover { color: #e0559a; }
+  #size-panel .sp-row { display: flex; align-items: center; gap: 10px; }
+  #size-panel input[type=range] { flex: 1; accent-color: #e0559a; }
+  #size-panel .sp-val {
+    color: #3f3140; font: 700 13px/1 "Microsoft YaHei", sans-serif;
+    min-width: 40px; text-align: right;
+  }
+  /* 频率控制面板（待机对话 3 模式 + 走动间隔） */
+  #freq-panel {
+    position: fixed; right: 26px; bottom: 130px;
+    width: 272px;
+    background: rgba(255,255,255,.96);
+    border: 3px solid #3f3140;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    padding: 12px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+    color: #3f3140;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+  }
+  #freq-panel .sp-head {
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  #freq-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #freq-panel .sp-x:hover { color: #e0559a; }
+  #freq-panel .f-sec { margin: 4px 0 8px; }
+  #freq-panel .f-opt { display: flex; align-items: center; gap: 6px; margin: 4px 0; cursor: pointer; }
+  #freq-panel .f-opt input { accent-color: #e0559a; }
+  #freq-panel .f-row { display: flex; align-items: center; gap: 6px; margin: 6px 0 6px 18px; }
+  #freq-panel .f-row.disabled { opacity: .45; pointer-events: none; }
+  #freq-panel .f-row label { flex: 0 0 auto; }
+  #freq-panel input[type=number] {
+    width: 62px; padding: 3px 6px;
+    border: 2px solid #d8c4d2; border-radius: 8px;
+    font: 700 13px/1.2 "Microsoft YaHei", sans-serif; color: #3f3140;
+    outline: none;
+  }
+  #freq-panel input[type=number]:focus { border-color: #e0559a; }
+  #freq-panel .f-hint { color: #9a8f9e; font-size: 11px; margin-left: 4px; }
+  /* 自定义右键菜单（可拖动，出现在光标旁）——两列网格横向扩展 */
+  #ctx-menu {
+    position: fixed; left: 0; top: 0;
+    width: 428px;
+    background: rgba(255,255,255,.97);
+    border: 3px solid #3f3140;
+    border-radius: 14px;
+    box-shadow: 0 8px 22px rgba(0,0,0,.28);
+    z-index: 40;
+    display: none;
+    user-select: none;
+    padding: 6px;
+    color: #3f3140;
+    font: 500 13px/1.5 "Microsoft YaHei", sans-serif;
+  }
+  #ctx-menu .cm-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    padding: 4px 8px 6px; cursor: grab; user-select: none;
+    border-bottom: 2px dashed #e8dbe6; margin-bottom: 4px;
+  }
+  #ctx-menu .cm-head:active { cursor: grabbing; }
+  #ctx-menu .cm-x { cursor: pointer; color: #b09aa8; font-size: 13px; }
+  #ctx-menu .cm-x:hover { color: #e0559a; }
+  #ctx-menu .cm-item { padding: 7px 10px; border-radius: 9px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ctx-menu .cm-item:hover { background: #ffe3f0; color: #e0559a; }
+  #ctx-menu .cm-sep { height: 2px; background: #f0e4ee; margin: 5px 8px; border-radius: 2px; }
+  /* 两列网格 */
+  #ctx-menu .cm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; }
+  #ctx-menu .cm-grid .cm-item { width: 100%; box-sizing: border-box; }
+  #ctx-menu .cm-full { display: block; }
+  /* 互聊板块（与原板块分隔的独立小卡）：设置入口 + "找XX聊天"横排按钮 */
+  #ctx-menu .cm-chatter {
+    margin: 2px 4px 6px; padding: 6px 6px 7px;
+    background: linear-gradient(120deg, #ffeff7, #fff5fa);
+    border: 2px solid #ffd3e8; border-radius: 12px;
+  }
+  #ctx-menu .cm-chatter-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font: 800 12px/1.5 "Microsoft YaHei", sans-serif; color: #d0408a;
+    padding: 2px 6px 4px;
+  }
+  #ctx-menu .cm-chatter-head .cm-chat-set {
+    cursor: pointer; color: #b06a93; font: 700 11px/1.3 "Microsoft YaHei", sans-serif;
+    padding: 2px 8px; border: 1.5px solid #ffd3e8; border-radius: 9px; background: #fff;
+  }
+  #ctx-menu .cm-chatter-head .cm-chat-set:hover { color: #e0559a; border-color: #f5c0da; }
+  #ctx-menu .cm-chat-row { display: flex; gap: 6px; padding: 0 2px; }
+  #ctx-menu .cm-chat-btn {
+    flex: 1; text-align: center; cursor: pointer;
+    font: 700 11.5px/1.4 "Microsoft YaHei", sans-serif; color: #c0408a;
+    background: #fff; border: 1.5px solid #ffc9e2; border-radius: 9px;
+    padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background .12s ease, transform .12s ease, color .12s ease;
+  }
+  #ctx-menu .cm-chat-btn:hover { background: #ffd9ec; transform: translateY(-1px); }
+  #ctx-menu .cm-chat-btn.disabled { opacity: .4; pointer-events: none; }
+</style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div class="popover" id="popover"></div>
+  <div id="dialog">
+    <div class="d-head">
+      <span class="d-name" id="d-name"></span>
+      <span class="d-scene" id="d-scene"></span>
+      <span class="d-btn" id="d-skip" title="跳到下一场">⏭ 下一场</span>
+      <span class="d-btn" id="d-close" title="结束">✕</span>
+    </div>
+    <div class="d-text" id="d-text"></div>
+    <div class="d-next">▼ 点击继续（Esc 结束）</div>
+  </div>
+  <div id="size-panel">
+    <div class="sp-head"><span id="sp-title">🎀 调整三小只大小</span> <span class="sp-x" id="sp-close">✕</span></div>
+    <div class="sp-row">
+      <input type="range" id="sp-range" min="50" max="200" step="5" value="100">
+      <span class="sp-val" id="sp-val">100%</span>
+    </div>
+  </div>
+  <div id="chatter-panel">
+    <div class="sp-head">💬 小偶像互聊设置 <span class="sp-x" id="ct-close">✕</span></div>
+    <div class="ct-row">
+      <label>启用互聊</label>
+      <input type="checkbox" id="ct-on" style="width:16px;height:16px;accent-color:#e0559a;">
+    </div>
+    <div class="ct-row">
+      <label>靠近距离</label>
+      <input type="range" id="ct-near" min="100" max="400" step="20" value="220">
+      <span class="ct-val" id="ct-near-val">220</span>
+    </div>
+    <div class="ct-row">
+      <label>冷却时长</label>
+      <input type="range" id="ct-cool" min="1" max="10" step="1" value="4">
+      <span class="ct-val" id="ct-cool-val">4分</span>
+    </div>
+    <div class="ct-row">
+      <label>对话轮数</label>
+      <input type="range" id="ct-lines" min="2" max="8" step="1" value="5">
+      <span class="ct-val" id="ct-lines-val">5行</span>
+    </div>
+    <div class="ct-hint">两只靠近（≤靠近距离）自动两人闲聊；三只都挨近自动三人闲聊；聊完进入冷却。你点她们/开聊天/拖动会立即打断。右键「找XX聊天」可指定触发。</div>
+  </div>
+  <div id="vol-panel">
+    <div class="sp-head">🔊 音量大小 <span class="sp-x" id="vp-close">✕</span></div>
+    <div class="vp-row">
+      <span class="vp-mute" id="vp-mute" title="静音/取消静音">🔊</span>
+      <input type="range" id="vp-range" min="0" max="100" step="5" value="70">
+      <span class="vp-val" id="vp-val">70%</span>
+    </div>
+    <div class="vp-row" style="margin-top:8px;" title="捏捏/菜单等音效">
+      <span class="vp-mute" style="font-size:16px;">🎵</span>
+      <input type="range" id="vp-sfx" min="0" max="100" step="5" value="100">
+      <span class="vp-val" id="vp-sfx-val">100%</span>
+    </div>
+    <div class="vp-row" style="margin-top:8px;" title="BGM 播放器音量">
+      <span class="vp-mute" style="font-size:16px;">🎶</span>
+      <input type="range" id="vp-bgm" min="0" max="100" step="5" value="60">
+      <span class="vp-val" id="vp-bgm-val">60%</span>
+    </div>
+  </div>
+  <div id="music-panel">
+    <div class="sp-head"><span>🎵 音乐播放器</span> <span class="sp-x" id="mp-close">✕</span></div>
+    <div class="mp-track" id="mp-track" title="点击展开/收起全部 BGM"><span class="mp-note">🎵</span><span id="mp-track-name">MainBGM (1/1)</span> <span class="mp-arrow">▾</span></div>
+    <div class="mp-list" id="mp-list"></div>
+    <div class="mp-prog">
+      <input type="range" id="mp-prog" min="0" max="1000" value="0" step="1">
+      <div class="mp-time"><span id="mp-time-cur">0:00</span><span id="mp-time-dur">0:00</span></div>
+    </div>
+    <div class="mp-ctrl">
+      <span class="mp-btn" id="mp-prev" title="上一首">⏮</span>
+      <span class="mp-btn play" id="mp-play" title="播放/暂停">▶</span>
+      <span class="mp-btn" id="mp-next" title="下一首">⏭</span>
+      <span class="mp-btn" id="mp-mode" title="顺序播放 / 单曲循环" style="font-size:15px;">🔁</span>
+    </div>
+    <div class="mp-volrow">
+      <span class="mp-vol-ico">🎶</span>
+      <span>BGM 音量</span>
+      <input type="range" id="mp-vol" min="0" max="100" step="5" value="60">
+    </div>
+  </div>
+  <div id="chat-panel">
+    <div class="cp-head">
+      <span class="cp-dot"></span>
+      <span id="cp-title">💬 聊天</span>
+      <span class="cp-clear" id="cp-clear" title="清空此角色的本地对话记录">🗑</span>
+      <span class="sp-x" id="cp-close" title="关闭聊天">✕</span>
+    </div>
+    <div class="cp-body" id="cp-body"></div>
+    <div class="cp-hint">和妄想天使小偶像们聊天吧～（Enter 发送）</div>
+    <div class="cp-input-row">
+      <input id="cp-input" placeholder="输入想对她说的话…" maxlength="200" autocomplete="off">
+      <span id="cp-send">发送</span>
+    </div>
+  </div>
+  <div id="bubble-chat">
+    <input id="bc-input" placeholder="对她说点什么…（Enter 发送）" maxlength="200" autocomplete="off">
+    <span id="bc-send">发送</span>
+    <span id="bc-hist-btn" title="查看历史对话">▶</span>
+    <span id="bc-close" title="结束对话">✕</span>
+  </div>
+  <div id="bc-history">
+    <div class="cp-head">
+      <span class="bh-title" id="bh-title">💬 历史对话</span>
+      <span class="cp-clear" id="bh-clear" title="删除此角色全部历史会话">🗑</span>
+      <span class="sp-x" id="bh-close" title="收起">✕</span>
+    </div>
+    <div class="cp-body" id="bh-body"></div>
+  </div>
+  <div id="input-ctx"></div>
+  <div id="freq-panel">
+    <div class="sp-head">🎛️ 千夏频率 <span class="sp-x" id="fp-close">✕</span></div>
+    <div class="f-sec">
+      <div style="font-weight:700;margin-bottom:4px;">待机对话动画（气泡）</div>
+      <label class="f-opt"><input type="radio" name="fp-mode" value="off"> 关闭（日常不冒泡，点击互动仍可）</label>
+      <label class="f-opt"><input type="radio" name="fp-mode" value="fix"> 固定循环（每隔固定秒数播放一次）</label>
+      <label class="f-opt"><input type="radio" name="fp-mode" value="rand"> 随机循环（上下限内随机间隔播放）</label>
+    </div>
+    <div class="f-row" id="fp-fix-row">
+      <label>固定间隔</label>
+      <input type="number" id="fp-fix" min="7" max="300" step="0.5">
+      <span class="f-hint">秒（7 ~ 300）</span>
+    </div>
+    <div class="f-row" id="fp-rand-min-row">
+      <label>随机下限</label>
+      <input type="number" id="fp-rand-min" min="7" max="300" step="0.5">
+      <span class="f-hint">秒（7 ~ 300）</span>
+    </div>
+    <div class="f-row" id="fp-rand-max-row">
+      <label>随机上限</label>
+      <input type="number" id="fp-rand-max" min="7" max="300" step="0.5">
+      <span class="f-hint">秒（≤5 分钟）</span>
+    </div>
+    <div class="f-sec" style="margin-top:6px;border-top:2px dashed #e8dbe6;padding-top:8px;">
+      <div style="font-weight:700;margin-bottom:4px;">走动频率</div>
+      <div class="f-row" style="margin-left:0;">
+        <label>间隔</label>
+        <input type="number" id="fp-move" min="7" max="300" step="0.5">
+        <span class="f-hint">秒（7 ~ 300）</span>
+      </div>
+      <div class="f-row" style="margin-left:0;margin-top:6px;">
+        <label style="flex:0 0 auto;"><input type="checkbox" id="fp-movey" style="accent-color:#e0559a;width:15px;height:15px;"> 竖直移动</label>
+        <span class="f-hint">非重力下可上下/斜向走动（默认仅左右）</span>
+      </div>
+    </div>
+  </div>
+  <!-- 自定义右键菜单（可拖动，出现在光标旁；命中角色时显示该角色专属项） -->
+  <div id="ctx-menu">
+    <div class="cm-head" id="cm-head">🎀 妄想天使 <span class="cm-x" id="cm-close">✕</span></div>
+    <div class="cm-chatter">
+      <div class="cm-chatter-head">
+        <span>💬 小偶像互聊</span>
+        <span class="cm-chat-set" data-act="chatter-set">⚙ 设置</span>
+      </div>
+      <div class="cm-chat-row">
+        <span class="cm-chat-btn" data-chat-to="airui" id="ct-to-airui">找爱芮聊天</span>
+        <span class="cm-chat-btn" data-chat-to="qianxia" id="ct-to-qianxia">找千夏聊天</span>
+        <span class="cm-chat-btn" data-chat-to="nangong" id="ct-to-nangong">找南宫聊天</span>
+      </div>
+      <div class="cm-chat-row" style="margin-top:5px;">
+        <span class="cm-chat-btn" id="ct-to-trio" style="flex:1;">👭 三个人一起聊天</span>
+      </div>
+    </div>
+    <div class="cm-grid" id="cm-grid-role">
+      <div class="cm-item" data-act="interact" id="cm-interact" style="display:none">👆 捏捏小偶像（互动）</div>
+      <div class="cm-item" data-act="chat" id="cm-chat" style="display:none">💬 聊天…</div>
+      <div class="cm-item" data-act="story" id="cm-story" style="display:none">♪ 千夏的故事</div>
+      <div class="cm-item" data-act="size1" id="cm-size1" style="display:none">🎀 调整千夏大小…</div>
+    </div>
+    <div class="cm-sep" id="cm-sep-role" style="display:none"></div>
+    <div class="cm-grid">
+      <div class="cm-item" data-act="freq">🎛️ 三小只待机频率…</div>
+      <div class="cm-item" data-act="gravity" id="cm-gravity">🌍 重力：关（悬浮走动）</div>
+      <div class="cm-item" data-act="vol">🔊 音量大小…</div>
+      <div class="cm-item" data-act="music">🎵 音乐播放器…</div>
+      <div class="cm-item" data-act="sizeall" id="cm-sizeall" style="display:none">🎀 调整三小只大小…</div>
+      <div class="cm-item" data-act="lock" id="cm-lock">🔓 锁定（禁止拖动）</div>
+    </div>
+    <div class="cm-sep"></div>
+    <div class="cm-item cm-full" data-act="quit">🚪 退出桌宠</div>
+  </div>
+  <script>
+    window.addEventListener('error', function (e) {
+      console.error('GLOBAL_ERROR:', e.message, e.filename, e.lineno, e.error);
+      var el = document.getElementById('hint');
+      if (el) el.textContent = 'ERROR: ' + e.message;
+    });
+  </script>
+  <script src="../assets/spine-core.js"></script>
+  <script src="spine-gfx.js"></script>
+  <script src="core.js"></script>
+  <script src="settings.js"></script>
+  <script src="ai-core.js"></script>
+  <script src="chatter-engine.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
