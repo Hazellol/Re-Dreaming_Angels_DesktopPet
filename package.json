@@ -1,0 +1,54 @@
+{
+  "name": "re-dreaming-angels-desktop-pet",
+  "version": "1.0.0",
+  "description": "Dreaming Angels desktop pet (Airui / Qianxia / Nangong, source-level animation)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack:portable": "electron-builder --win portable",
+    "pack:installer": "electron-builder --win nsis"
+  },
+  "author": "master",
+  "license": "MIT",
+  "dependencies": {
+    "@esotericsoftware/spine-canvas": "^4.2.42",
+    "@esotericsoftware/spine-core": "^4.2.42"
+  },
+  "devDependencies": {
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.master.re-dreaming-angels",
+    "productName": "妄想天使桌宠",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "妄想天使桌宠-便携版-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "妄想天使桌宠",
+      "artifactName": "妄想天使桌宠-安装版-Setup-${version}.exe"
+    }
+  }
+}

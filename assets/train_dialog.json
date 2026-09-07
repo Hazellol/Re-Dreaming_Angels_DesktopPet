@@ -1,0 +1,2569 @@
+{
+ "roles": {
+  "airui": {
+   "chapters": [
+    {
+     "scene": 1,
+     "title": "训练事件1",
+     "lines": [
+      {
+       "pos": "left",
+       "chara": "anby",
+       "name": "安比",
+       "img": "gal_anby",
+       "text": "绳匠，完成这次的「训练助理」任务后，真的会请我吃汉堡吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "汉堡…啊没错，肯定会的。放心吧安比，只要你能帮助我们圆满完成「助教」的工作…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "不过，总觉得安比还没有完全搞清楚「偶像」的意思…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "确实…但没关系，应该不会影响工作内容…吧…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "诶哥哥，先等等，爱芮看上去好像…还没进入状态？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "……",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "爱——芮——！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "啊…是助教！对不起对不起，刚刚好像有点掉帧了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "anby",
+       "name": "安比",
+       "img": "gal_anby",
+       "text": "在「偶像活动」中，要注意时刻保持警觉…不然的话，会让自己和同伴陷入危险。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "你果然没搞懂偶像是什么啦！不过，也许偶尔这么说也没错…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "你是想起了嘉音那次的事件吧，确实挺危险的，哈哈…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "虽然搞不清楚你们在说什么…但是应该在说关于战斗的事情吧！那、那我还是懂一点的！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "战斗…？等等，爱芮不是偶像吗？难道你们还需要执行什么秘密任务？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "没有啦…我们事务所经常入不敷出，所以需要我们进空洞补贴家用…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_6",
+       "text": "久而久之，也掌握了一些和以骸战斗的技巧…仅此而已哦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "如果这些被「妄想天使」的粉丝知道，也许会为我们而担心的…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "不，不止如此…也许当他们了解到「偶像」背后的更多真实，就会…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "anby",
+       "name": "安比",
+       "img": "gal_anby",
+       "text": "爱芮知道汉堡吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "汉堡…？我、我知道的！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "anby",
+       "name": "安比",
+       "img": "gal_anby",
+       "text": "无论面包之下隐藏的是黄芥末酱还是番茄酱，都无法改变汉堡很美味的事实。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "看来…这是在用汉堡作比喻呢！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "anby",
+       "name": "安比",
+       "img": "gal_anby",
+       "text": "嗯。无论是表面还是内里，都是真实自己的一部分…这是重要的伙伴们教会我的，我也教给你。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯，而且爱芮作为「偶像」想为大家带来希望与快乐的心，一定是无比真实的。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "鼓掌鼓掌！不愧是最佳「训练助理」！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "真实…吗？嗯，我好像明白了些什么…谢谢我的助教们！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "我们只是做了助教该做的事情。说起来，爱芮在台上和台下给人的感觉确实有点不一样呢…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯嗯！在台上活力四射，在台下…好像有点害羞的样子！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "诶？有、有吗…可能因为站在舞台上的那一刻，我就把一切全都丢到脑后了吧…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_6",
+       "text": "像这样——♪爱芮一点也不紧张，心里只有满满的观众♪",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "啊…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "啊…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "rp",
+       "name": "法厄同",
+       "img": "",
+       "text": "啊…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "诶！？我怎么不自觉唱出来了…还有南宫和千夏，你们怎么突然…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "♪爱芮一点也不紧张，心里只有满满的观众♪",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_5",
+       "text": "不不不不不不要唱啦！",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 2,
+     "title": "训练事件2",
+     "lines": [
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_6",
+       "text": "♪啦啦啦啦啦~♪",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哇！真是太好听了，爱芮！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "我的歌能被你唱出来，真是太幸福了，爱芮！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "谢谢大家，不过…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯？看爱芮的表情，她好像有点不是很满意的样子…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "经常发生这样的事情啦~爱芮对自己的歌声可是很严格的。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "但在我们这些素人眼里，她已经唱得很好啦！完全听不出有什么问题嘛…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "在专业人士的眼里，她也唱得非常棒哦！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "不过…爱芮对于音乐，有一套自己的标准，她在找出那个完美解之前可是不会罢休的哦~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "不、不好意思，大家还能再陪我来一次吗？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "当然没问题！我出错的时候，爱芮不也一遍遍陪我练习舞步嘛？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "嗯…！谢谢大家！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "♪啦啦啦啦啦~♪",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "虽然已经听过一遍了，但还是好想感叹…爱芮的声音像被天使吻过一样！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "……",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "但是看爱芮的表情，她好像还是有点不满意…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "对、对不起！可能在助教眼里，我的歌声已经很好听了吧…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "但我自己能感受到，在我演绎这首歌的时候，有一个错误的处理…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_5",
+       "text": "这个小小的瑕疵乍听之下会被忽略，但会破坏整首歌的和谐…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "可以再让我自己想一想吗？…拜托了！大家请先继续别的训练吧。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "好吧，爱芮，那你先琢磨琢磨，我们去看一下舞蹈的部分。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "…谢谢助教，能够给爱芮调整自己的机会。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "但是…爱芮会不会对自己有点太严格了？大部分人可能都听不出来那个瑕疵诶…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "不，对爱芮来说，这个瑕疵是必须消灭的东西吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "她是我们之中…最珍惜舞台的人。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "能够为别人唱歌这件事情，想必对她来说，比其他一切都要重要吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "嗯！爱芮有自己的坚持，我们作为队友，应该无条件支持她！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "而且她做的这一切，都是为了呈现更好的舞台哦！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "呵呵，看来我们作为助教，还有很多需要考虑的事情呢…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "我明白了，在这段高音之前加一个转音，就可以解决这种不和谐的感受！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "诶！爱芮找到解决的办法了吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_6",
+       "text": "嗯嗯！你们听！——♪啦啦啦啦啦~♪",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哇！虽然是一个小小的改动，但听起来真的不一样了诶！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "果然是「完美偶像」小爱芮呢~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "南宫，你总这样说…我也会害羞的！",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 3,
+     "title": "训练事件3",
+     "lines": [
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "今天的训练活动有点特别，那就是——",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "那就是——？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯，鉴于大家近日练习强度比较大，我们安排了一期读评论活动。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "诶！？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "嗯哼~读粉丝的评论吗？原来助教安排了这么有意思的活动~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯！大家想必对于粉丝眼中的自己是什么样，多多少少都有点了解吧！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "但是，以集体读评论的方式，想必能够帮助大家更好把握团队的整体风格。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "所以，铛铛铛！我们为大家筛选出了一些有针对性的评论！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "fairy",
+       "name": "fairy",
+       "img": "gal_fairy",
+       "text": "以下为搜索结果。请「妄想天使」的成员逐字朗读。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "逐逐逐逐字朗读！这真的不是什么惩罚活动吗…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "那我先来吧~「南宫是一款超可爱的甜酷小恶魔」，哇，即使是我，读这种话也有点害羞呢~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "可可可怕的南宫，居然以如此平静的语气说出了这句话！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "这、这个必须得读吗…呜呜，「小哭包千夏快到姐姐怀里来你太萌了」…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "这这这这这是什么呀！…好、好让人害羞！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "那——接下来轮到爱芮了！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "「好喜欢爱芮的歌声，她声音所到之处就洒满了阳光」…原来有人是这样看我的吗…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯？怎么感觉Fariy选择的评价，一到爱芮这里就有点画风突变了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "是吗是吗？我看看…「看到爱芮的笑容，就会发自内心笑出来」、「特别元气的完美偶像」…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "总觉得…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "好像夸张的评论一下子变得…有点治愈人心的感觉？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "嘻嘻~因为爱芮确实在舞台上是如同阳光一样的存在哦~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "始终充满能量、在台上播撒欢乐，简直是最经典的「王道偶像」 嘛！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "面对这样的爱芮，粉丝心里可能只有温暖平和的情感吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_3",
+       "text": "和、和我这种上台都会摔倒的人形成了鲜明对比…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯，我倒是觉得，你们三个人都各有特色，缺少任何一个人，都不再像「妄想天使」了。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "对呀！爱芮的始终乐观、千夏的笨拙成长、南宫的大胆调皮…都是「妄想天使」呢！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "嗯…！谢谢助教，读了这些评论，让我感觉到浑身暖洋洋的…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "一想到有这么多人喜欢我的歌声，被我的舞台所温暖着…就好开心。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "所以台下的爱芮，也应该坚定地相信这份来自粉丝的爱哦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "嗯！我、我会尽量自信起来的！",
+       "pose": null
+      }
+     ]
+    }
+   ],
+   "total": 100
+  },
+  "qianxia": {
+   "chapters": [
+    {
+     "scene": 1,
+     "title": "训练1",
+     "lines": [
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_3",
+       "text": "啊…果然我这种人就应该老老实实呆在幕后才对…",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "千夏这是怎么了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "Fairy，帮我们查看一下训练记录。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_5",
+       "text": "对，接下来向左跨步…诶千夏等等！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "停停停，停不下来了！快躲开！",
+       "pose": "生气"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_3",
+       "text": "疼疼…小羽！你没事吧？！",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "没事哦~倒是你，小心别跌倒了。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_6",
+       "text": "啦~♪啦啦啦~~~~♪",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "啦—啦——！咳咳！咳咳咳！",
+       "pose": "生气"
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "千夏…你还好吗？这里的和声，要不然稍微降一下调吧…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "呜呜都怪我，舞也跳不好歌也唱不上去，连累了南宫和爱芮…",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯…这个场面…感觉需要来点鼓励呢…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "原来千夏这么厉害的人也会有烦恼啊。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哥哥，语气不要那么平淡啦，有点起伏比较好！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "历厉厉厉害的人！？…在在在说我吗！？",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "当然了。南宫和爱芮才能真正发挥自己的才能，正是多亏了厉害的千夏。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "是吧，另一位助教？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "没错没错！能够独自创作出这么多好听的音乐，千夏超厉害的！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "也、也不是独自一人啦，大家也有给我灵感…",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "但是没有千夏的话，这种曲子是创作不出来的。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯！而没有这种曲子，「妄想天使」简直就像同时丢掉了妄想和天使！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "千夏…还有很多其他的优点，对。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "你的舞步特别可爱，和声也总是很有创意，哪怕是笨拙的小动作都超级灵动！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "最重要的是，「妄想天使」的歌全都是你自己写的，其他偶像肯定都做不到。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "你你你们这样夸我也没有好处的哦，我才没那么厉害啦~诶嘿，诶嘿嘿~",
+       "pose": "害羞"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "等等…训练！对了，今天的训练还没做完呢！",
+       "pose": "待机"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "嗯~嗯~我还等着超~厉害的小千夏再跌进我怀里呢。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "什什什么！南宫你不要乱说！…我不会再那么不小心撞到你了！",
+       "pose": "生气"
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "总…总之我们再练练新曲吧！谢谢助教，现在应该可以继续训练了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "呼…千夏打起精神了，太好了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯。她一直都很想跟上队伍的步伐，想必给了自己太大压力吧。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哥哥刚才反应很快嘛~表扬一下！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "这不是经常安慰爱闹脾气的妹妹，所以已经熟练了…好痛！你下手还是这么狠…",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 2,
+     "title": "训练2",
+     "lines": [
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "不论你妄想不妄想，「妄想天使」都在这里等着你！",
+       "pose": "自信"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "不对…感觉好像什么综艺节目的开场白…",
+       "pose": "心累"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "大家好~我们是超级甜蜜、超级可爱的「妄想天使」哟~",
+       "pose": "自信"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_3",
+       "text": "好像也不对，怎么说都不对…怎么感觉她们俩说出来都很正常呀…",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "嗯~什么正常？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "……",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "呃…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "刚，刚才的你们都看到了？",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "全都看到了哦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯…其实，我们也在。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "……",
+       "pose": "思考"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "呀啊啊啊啊啊！",
+       "pose": "生气"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "幸好我们来得早，没有错过千夏的精彩节目~你刚才在干嘛呢？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "我好像有点头绪…千夏是在模仿爱芮和南宫吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "模仿…我们吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "嗯，因…因为爱芮和南宫都有很独特的风格，在舞台上显得闪闪发光…",
+       "pose": "心累"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "而我…很多事都做不好，只是个被赶鸭子上架的原·幕后人员…",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_5",
+       "text": "不许说了！千夏可是「妄想天使」的灵魂人物哦，怎么能随随便便轻视自己。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_5",
+       "text": "是吧，助教？「妄想天使」离了千夏，就像新艾利都失去了歌声一样！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯！千夏的音乐，才是充满了「妄想」的音乐！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "我的音乐…充满了妄想吗？",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "嗯，「妄想天使」从来不是已经成型的组合，而像千夏一样，在笨拙地发芽和生长哦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "南宫…但、但是，粉丝们真的喜欢这样的我吗…",
+       "pose": "心累"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "当然啦！千夏有属于自己独特的魅力，那是爱芮和南宫身上都没有的哦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_1",
+       "text": "嗯嗯，其实千夏有不少一直在关注她的粉丝呢…你们看！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "「小千夏是不是跳的越来越好了？」、「一直进步的千夏好耀眼！」、「这就是养成系的魅力啊！」。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_2",
+       "text": "千夏，看到这些评论，你可以相信我们没有骗你了吧…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "嗯~成长中的千夏，就是成长中的「妄想天使」不可割却的存在呀~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "小羽…爱芮…还有两位助教，呜呜…",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "啊，还有这条！「习惯了以后，不觉得笨笨的千夏才最可爱吗？」，是夸夸呢~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "这这这种不算啦！！",
+       "pose": "害羞"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "真是的，也不知道你们从哪找来这么多…这种评论的。",
+       "pose": "生气"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嗯哼~作为偶像，倾听粉丝的声音可是很重要的哦。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "作为优秀的助教，当然早就为你们筛选好有效评论了！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "啊，Fairy的出场机会好像被挤掉了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "fairy",
+       "name": "fairy",
+       "img": "gal_fairy2",
+       "text": "主人…！",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 3,
+     "title": "训练3",
+     "lines": [
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "嘉音，你真的记住了我们的「约法三章」吗？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "要不然我们再对一遍…？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "哎呀真的记住啦！第一，绝对不能暴露我是耀嘉音！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "第二，唱歌时注意调整声线，绝对不能暴露我是耀嘉音！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "第三…好像记不得了，总之，就是绝对不能暴露嘛！真是的，铃和哲这次简直和伊芙一样~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "好啦好啦，一定要注意哦！——哥哥，开启连线吧！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "这可真是…有点理解伊芙琳了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "嗯哼哼~啦，啦啦…啦？（嗯，就是这样！等等…这里的旋律，还是不太对。）",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "千夏~今天的训练要开始了哦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "……",
+       "pose": "思考"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_4",
+       "text": "啦~啦啦，啦啦啦~（没错！这里再这样稍微处理一下~）",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "千夏？今天的训练日程要…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "嘘——！两位助教，小声点啦~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "♪♪♪~（弹出来！记下来！刚才的旋律，一定不能让它溜走！）",
+       "pose": "自信"
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "千夏好像陷入了一种…特殊的状态。「炒饭」老师，你有什么头绪吗？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "哼哼~这种时候就交给「专业人士」吧！稍等我一下哦。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "♪♪！（不对！这个走向太普通了，这一点也不「妄想天使」！）",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "千夏好像陷入困难了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "♪~♪♪~~♪！（或许，也可以试着这样延展旋律哦~）",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "！",
+       "pose": "思考"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "♪，♪~~♪♪…（对，对！这样后续的音轨还可以做出更多的变化同时副歌也更能调动情绪然后再给出一点点跳脱的小设计在里面！）",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "♪~♪！（没错！加入一些小惊喜，有时会有意想不到的效果哦！）",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "♪…（可是，虽然现在的旋律已经很棒了，但我总觉得…）",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "♪…（缺少一些灵魂吗…）",
+       "pose": null
+      },
+      {
+       "pos": "center",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "叮——！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "！",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "呃，哥哥…为什么她们俩都愣住啦？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯…我想先搞清楚，你这是在做什么呢？亲爱的妹妹——",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "总，总觉得这样才能参与到她们的交流中…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "哇，助教真是天才~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_2",
+       "text": "对，对！就是这个！我为什么没想到呢！",
+       "pose": "自信"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "如果在这个时候加入另一种音色的话就能让曲子更灵动而且也直接引起了听众的注意这也是曲子独有的特色之…",
+       "pose": "思考"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "诶…助教？你们什么时候…哎呦！南宫你敲我头干嘛！",
+       "pose": "待机"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "太好了太好了，千夏没有走火入魔~我们已经在这儿听了很久啦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "我我我只是刚好有…有一点灵感了嘛…",
+       "pose": "害羞"
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "这个语气，又变回平常的千夏了呢~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "对对对了！这位就是之前助教说的…「炒饭」老师吧！谢谢老师，今天的训练就到这里可以吗？我想立刻回去…把刚才的灵感写下来！",
+       "pose": "自信"
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "真的非常谢谢！我我我从来没有过这种感受！像是心与心，被音乐牵了起来…",
+       "pose": "思考"
+      },
+      {
+       "pos": "left",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "嗯嗯，我也非常享受这次助教活动哦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "既然如此，千夏就快回去吧，不然灵感要溜走了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "呼~好开心！——好久没有这么纯粹地仅仅用音乐交流了！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "音乐居然能做到这种程度…嘉音和千夏都好厉害啊！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "astra",
+       "name": "耀嘉音",
+       "img": "gal_astra",
+       "text": "也不是那么厉害的事啦~我们只是被音乐连接了起来…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_7",
+       "text": "南宫，我跟你说哦，刚才训练的时候，我我我好像听见嘉音的声音了…",
+       "pose": "自信"
+      },
+      {
+       "pos": "left",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "…你不会真的走火入魔了吧？",
+       "pose": null
+      }
+     ]
+    }
+   ],
+   "total": 115
+  },
+  "nangong": {
+   "chapters": [
+    {
+     "scene": 1,
+     "title": "训练1",
+     "lines": [
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "嗯哼~特别训练吗？没想到在助教眼里，我也需要单独练习呢~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "只是叫特别训练而已啦，你们三个人都有！这样可以更好地观察每个人在团队中的特点…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "嗯~这点舞蹈训练，轻轻松松嘛~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哇！律动感好强，而且每个动作都恰到好处…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "那…下一个是声乐的训练。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_7",
+       "text": "♪啦啦啦啦啦啦啦♪",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯，气息很稳，高音和转音也都完美地完成了…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "今天的训练日程都结束了？那我先下线了哦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "啊，好的，辛苦了南宫。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哥哥！南宫好厉害啊…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "真不愧是「妄想天使」的天才啊。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "",
+       "name": "",
+       "img": "",
+       "text": "提示，经观察，对象南宫羽目前仍处于训练状态。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "诶？今天的训练日程已经结束了呀。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "妹妹，我们远程联讯一下练习室吧？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "嗯，爱芮的整体状态不错，但这里的舞步似乎有点僵硬…下次编舞注意一下这点吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "千夏…得给她加加课，巩固一下基础呢~不过，她已经很努力了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_7",
+       "text": "还有…我的话，这段副歌部分，声音总觉得发干发涩…嗯，今晚加练这部分吧。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "南宫！你怎么还在训练呀！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_5",
+       "text": "呜哇，吓我一跳！诶，原来是助教啊~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "千夏和爱芮的训练复盘，还有南宫自己的加练计划…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "南宫，你那么快完成日常训练，原来是在忙这个呀！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "嗯，毕竟我是队长嘛~这也是队长的责任之一哦。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "好严格的日程…南宫，你这样不会有些吃不消吗？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "对呀，我们的日程明明已经排得很满了，你还给自己加练…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "没关系…我一直都是这样过来的，所以已经适应这种强度啦…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "还是听助教的吧，南宫，今天的训练到此为止好了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "…这是作为队长的责任，所以我没有勉强自己哦。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "不行不行不行！听我的，南宫，今天不许练了！而且以后要按照助教给你安排的日程练习哦！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "…嗯哼~好吧，助教都这么说了…再坚持下去，显得我有点固执己见啦。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "不过，你整理的训练复盘很有用，我就不客气地拿走作为参考啦，嘿嘿！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "哇，好狡猾的助教！不过，有用就好啦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "呵呵…我们一定不会辜负南宫的信赖的，也让我们为你分担一部分「队长的责任」吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "…呵呵，真是可靠的助教们啊！那今天就晚安啦~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "南宫…真的好强啊，哥哥。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯，可能这就是天才吧。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "是「努力的天才」才对吧~",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 2,
+     "title": "训练2",
+     "lines": [
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "虽然被你们叫来帮忙有点开心，但我其实不是很了解关于「偶像」的事情…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "没关系！爱丽丝之前不是还拍过海报嘛，跟那个其实有点像…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "南宫大坏蛋！你怎么又这样！！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "啊啊啊啊啊！——不不不我绝对没有被吓到！咳咳！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_2",
+       "text": "呜呜呜呜，是千夏大坏蛋欺负人~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "南宫，你脸上根本就没有眼泪哦！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "发生什么事了？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "啊，是助教！那个，是这样的…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_4",
+       "text": "我们本来计划好了，早上坐长途大巴一起去外环录音…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_5",
+       "text": "但是出发的那一刻，一辆黑色豪华轿车突然唰地停在路口，咻地一下就把我们送到了目的地…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "这肯定是南宫偷偷约的汽车！她明明和我说好，不再用自己的钱偷偷补贴「妄想天使」了！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "这不是因为外环太远了嘛~如果坐大巴去录音棚，还没到地方大家可能都累坏了…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "好啦好啦~爱芮先带千夏去冷静一下，今天还有训练呢。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_5",
+       "text": "唉~可恶的小千夏，总是不了解我的良苦用心~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯…我倒是觉得，千夏生气是有理由的。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "同意！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "诶？你们都觉得我做错了吗…千夏也是，每次都会跟我说，不要在没必要的地方浪费…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "嗯…我觉得，千夏小姐，可能是有点寂寞吧。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "寂寞…？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "嗯！就是没有被信赖、被排除在外的感觉。其实我也经常被周围的人说对金钱缺少概念…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哈哈哈，是哦！她之前差点成为了外环车队的老大…还替整条街的人办过录像店会员卡！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "不、不要再说啦！…是的，我做过这些事情，但我的朋友们…并没有和我想象的一样开心。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "因为丁尼不能解决一切，也不是朋友留在身边的理由。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "嗯，所以比起用金钱解决问题，不如先和朋友交流交流…这是我的朋友教会我的处世之道哦！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "你的队友们之所以有点生气，可能是觉得你没有与他们共同思考问题的解决吧？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "你们是最好的朋友与队友，所以…在行动之前，也应该和她们坦诚相待吧？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "是吗…原来在你们看来，她们会这样想吗…其实，我最信赖的人就是她们两个了。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "alice",
+       "name": "爱丽斯",
+       "img": "gal_alice",
+       "text": "不过有些事只有说出来，才能更好的传达哦。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "嗯，谢谢助教。我可能…明白自己应该怎么做了。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "这次训练比起技巧的进步，更像是心灵的成长呢~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "嗯嗯~多亏了大家呢~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "南宫！你这个大坏蛋！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_2",
+       "text": "呜呜呜呜，是千夏大坏蛋欺负人~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯？昨天和爱丽丝聊完后，南宫应该想开了吧…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "哥哥…我有个大胆的想法，你说这次，南宫不会其实是故意的吧？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "嗯…你这么一说…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "诶嘿~",
+       "pose": null
+      }
+     ]
+    },
+    {
+     "scene": 3,
+     "title": "训练3",
+     "lines": [
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "千夏，在第三个节拍的时候，别忘了也要变换手势哦~",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "爱芮，你也该休息一下了吧？高音好像要比平时紧张一些呢。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "盯——",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "怎么了…助教怎么目不转睛的看着我？嗯哼~难道…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "助教也想加入我们的练习？",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "没有没有！只是觉得…南宫认真照顾大家的样子…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "很有队长的风范呢。",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "很像姐姐的样子呢！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "诶~助教居然是这么看我的吗？",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "哈哈哈，这么一想，面对两个需要照顾的小朋友，我确实是「姐姐」呢~",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "哼！南宫那么幼稚，才不是姐姐呢！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "啊呜呜，补要捏窝的脸，话说不清楚了…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "这个是调皮的小朋友！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_3",
+       "text": "南、南宫，我刚才的咬字有没有问题呀…",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ar",
+       "name": "爱芮",
+       "img": "gal_ar_5",
+       "text": "等一下，怎么突然摸我的头…",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_1",
+       "text": "这个，则是认真的小朋友！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "认真的小朋友要奖励，奖励你唱一组最喜欢的声乐练习！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_4",
+       "text": "调皮的小朋友…你总是练不好的那套动作，做不好不许回家！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_6",
+       "text": "哼哼，没想到吧，我本来就准备加练的！",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_6",
+       "text": "那你也荣升为听话的小朋友好了！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "qx",
+       "name": "千夏",
+       "img": "gal_qx_1",
+       "text": "你你你你你！太狡猾了！！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "ling",
+       "name": "铃",
+       "img": "gal_ling",
+       "text": "那我呢那我呢！",
+       "pose": null
+      },
+      {
+       "pos": "left",
+       "chara": "zhe",
+       "name": "哲",
+       "img": "gal_zhe",
+       "text": "唉…你就不要凑这个热闹了。",
+       "pose": null
+      },
+      {
+       "pos": "right",
+       "chara": "ng",
+       "name": "南宫",
+       "img": "gal_ng_3",
+       "text": "你们两个是帮我管小朋友的小助教~好啦，聊天结束，还是继续训练吧！",
+       "pose": null
+      }
+     ]
+    }
+   ],
+   "total": 97
+  }
+ }
+}
