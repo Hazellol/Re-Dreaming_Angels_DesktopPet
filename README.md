@@ -73,11 +73,9 @@ Re-Dreaming_Angels_DesktopPet/
 │  ├─ bgm/                 # 10 首 BGM（拖入 mp3 即收录）
 │  └─ sfx/                 # 音效（捏捏/菜单/壁弹）
 ├─ data/                   # 运行时数据：chat_<角色>.json（对话+互聊记忆）、ai_config.json
-├─ scripts/                # 开发工具（裁剪/提帧/校验/smoke 测试）
-└─ 文档三件套：
-   README.md               # 本文件（用户手册）
-   PROJECT_MASTER_DOC.md   # 项目主档（架构/数据流/模块/调试矩阵/演进史）
-   IMPLEMENTATION_NOTES.md # 技术手册（渲染/状态机/坑总集/实现细节）
+└─ scripts/                # 开发工具（裁剪/提帧/校验/smoke 测试）
+ 
+
 ```
 
 ---
