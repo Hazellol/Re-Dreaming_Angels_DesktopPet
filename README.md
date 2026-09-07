@@ -52,32 +52,6 @@
 - **加 BGM**：把 mp3 丢进 `assets/bgm/`，重启后出现在播放器列表
 - **隐藏某只**：拖到屏幕外 / 菜单"调整XX大小"面板里可休息
 
----
-
-## 🛠 调试模式（开发人员）
-
-设置环境变量后启动（如 PowerShell：`$env:QX_CHAT='1'; npm start`）：
-
-| 变量 | 作用 |
-|---|---|
-| `QX_CHAT=1` | 自动开场演示（手机面板样式聊天） |
-| `QX_CHAT_BUBBLE=1` | 气泡聊天样式演示 |
-| `QX_CHAT_SEND2=1` | 自动发送第二条消息（4200ms） |
-| `QX_CHAT_SWITCH=1` | 聊天样式切换（面板↔气泡） |
-| `QX_AI_MOCK=1` | 本地模拟回复（不消耗 API） |
-| `QX_WEBTEST=1` | 真实联网搜索测试（千夏"出道曲"） |
-| `QX_CHATTEST=1` | 强制触发互聊（千夏×南宫，真实 API） |
-| `QX_EDITTEST=1` | 编辑重发自动演练 |
-| `QX_BUBBLETEST=top/left/right/topright` | 气泡防出屏边缘测试 |
-| `QX_CTX=1` | 右键菜单截图 |
-| `QX_GRAVITY=1` | 重力模式开启 |
-| `QX_SCALES='{"all":65}'` | 角色大小（json） |
-| `QX_AUDIO='{...}'` / `QX_FREQ='{...}'` / `QX_CHATTER='{...}'` | 配置注入（env 优先于本地记忆） |
-| `QX_BG=black` / `QX_NOCLIP=1` / `QX_NOALPHA=1` | 渲染器调试（黑底隔离/禁用裁剪/禁用预乘） |
-| `--screenshot <ms> "hud=1"` | 启动后指定毫秒截图 + 左上角 HUD（角色姿势/动画状态） |
-
----
-
 ## 📁 项目结构
 
 ```
