@@ -3,7 +3,7 @@
 node_modules/
 dist/
 
-# 运行数据（⚠️ AI 配置含 API Key，绝不上传；聊天历史为隐私）
+# 运行数据
 data/
 
 # 日志与临时
