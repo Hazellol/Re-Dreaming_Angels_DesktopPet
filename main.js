@@ -3,6 +3,7 @@
 //   控制面板：启动时打开（分别控制三小只开关）；叉掉 = 隐藏到系统托盘
 //   调试：--screenshot [delayMs] ["query"] 自动截图退出；--drag-test 自动模拟拖动；--panel-shot [delayMs]
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog, globalShortcut } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -104,6 +105,44 @@ function startMousePoll() {
   if (mousePollTimer) clearInterval(mousePollTimer);
   mousePollTimer = setInterval(mousePollTick, 70);
 }
+
+// ===== 拖动状态守护（针对"截图工具吞掉 mouseup"造成点击全面失效的兜底）=====
+// 原理：交叉验证"物理按键状态"与"我们以为的拖动状态"。
+//   · renderer 报告拖动中，但系统物理左键已松开（GetAsyncKeyState）→ mouseup 丢失，拖动状态卡死 → 立即清理
+//   · 拖动状态持续超过硬上限（用户不可能按住那么久）→ 强制清理
+// 只在"疑似拖动"时每 2s 查一次（powershell 调用约 150ms），平时零开销。
+let guardBusy = false;
+let lastGuardAt = 0;
+let dragStuckSince = 0;
+function checkMouseGuard() {
+  const now = Date.now();
+  if (guardBusy || now - lastGuardAt < 2000) return;
+  lastGuardAt = now;
+  guardBusy = true;
+  const script = path.join(__dirname, 'scripts', 'mouse_guard.ps1');
+  execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script],
+    { timeout: 4000, windowsHide: true }, (err, stdout) => {
+      guardBusy = false;
+      if (err || !stdout) return;
+      const line = String(stdout).trim().split(/\r?\n/).pop() || '';
+      const m = line.match(/LEFT=(\w+)\s+FG=([^|]+)\|(\d+)\|(.*)/);
+      if (!m) return;
+      const leftDown = m[1] === 'DOWN';
+      const fgTitle = (m[4] || '').trim();
+      if (!hitForceInteractive) return;   // 已不是拖动状态：无需处理
+      if (!leftDown) {
+        console.log('[GUARD] physical left button is UP but drag state stuck → abort drag | fg=', fgTitle);
+        abortDragFromMain('mouseup-lost');
+      }
+    });
+}
+function abortDragFromMain(reason) {
+  hitForceInteractive = false;
+  hitForceSince = 0;
+  dragStuckSince = 0;
+  try { if (win && !win.isDestroyed()) win.webContents.send('drag-abort', reason); } catch (e) { /* noop */ }
+}
+// （拖动守护逻辑见下方 mousePollTick 内的 GUARD 段）
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
   try {
@@ -141,6 +180,19 @@ function mousePollTick() {
   if (hitForceInteractive && hitForceSince && Date.now() - hitForceSince > 20000) {
     hitForceInteractive = false;
     hitForceSince = 0;
+  }
+  // GUARD：拖动守护——QQ/截图工具会吞掉 mouseup，使 renderer 的拖动状态卡死（点击全面失效）。
+  // 交叉验证物理左键状态（powershell 调 mouse_guard.ps1，仅在疑似拖动时每 2s 一次）。
+  if (hitForceInteractive) {
+    if (!dragStuckSince) dragStuckSince = Date.now();
+    if (Date.now() - dragStuckSince > 12000) {
+      console.log('[GUARD] drag state stuck >12s → force abort');
+      abortDragFromMain('timeout');
+    } else {
+      checkMouseGuard();
+    }
+  } else {
+    dragStuckSince = 0;
   }
   let inside = hitForceInteractive;
   let cx = -1, cy = -1;

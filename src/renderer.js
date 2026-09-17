@@ -614,6 +614,7 @@
     drag.sx = e.clientX; drag.sy = e.clientY;
     drag.vx = 0; drag.vy = 0; drag.lt = performance.now();
     drag.lx = e.clientX; drag.ly = e.clientY;
+    drag.lastMoveAt = performance.now();
     const c = idols[key];
     drag.ox = c.container.x; drag.oy = c.container.y;
     if (c.walking) { c.walkTween = null; c.walking = false; clearIdolFace(key); }
@@ -641,10 +642,13 @@
   }
   window.addEventListener('blur', abortDrag);
   document.addEventListener('visibilitychange', () => { if (document.hidden) abortDrag(); });
+  // 主进程拖动守护（交叉验证物理按键）发现 mouseup 丢失时通知中止
+  try { dk.onDragAbort(() => abortDrag()); } catch (e) { /* noop */ }
   window.addEventListener('mousemove', (e) => {
     if (!drag.on) return;
     // 拖动中收到"没有任何按键按下"的 mousemove = mouseup 已丢失 → 立即中断拖动
     if (e.buttons === 0) { abortDrag(); return; }
+    drag.lastMoveAt = performance.now();
     const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
     if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 5) {
       drag.moved = true;
@@ -2185,6 +2189,9 @@
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
     lastTime = now;
     frameCount++;
+    // 拖动状态超时兜底：拖动中若 2.5s 内没有任何鼠标移动更新（mouseup 被截图工具等吞掉的特征）
+    // → 中止拖动，避免 drag.on 卡死导致所有点击失效
+    if (drag.on && drag.lastMoveAt && (now - drag.lastMoveAt) > 2500) abortDrag();
 
     // 每帧先透明清屏：全部角色隐藏/无绘制时，表面必须立即变透明（否则最后一只的
     // 画面会"卡"在桌面上——WebGL 无 draw 时合成器不重绘，残留最后一个绘制帧）

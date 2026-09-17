@@ -138,6 +138,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   moveTop: () => ipcRenderer.send('move-top'),
   // 上报"可交互矩形"（主进程鼠标轮询裁决穿透用；rects=窗口 client 坐标数组，force=拖动/编辑中强制可交互）
   sendHitRects: (rects, force) => ipcRenderer.send('hit-rects', { rects, force: !!force }),
+  onDragAbort: (cb) => ipcRenderer.on('drag-abort', (e, reason) => cb(reason)),
   getHotkey: () => ipcRenderer.invoke('get-hotkey'),
   quit: () => ipcRenderer.send('quit')
 });

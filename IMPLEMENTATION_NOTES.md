@@ -127,6 +127,14 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **实测铁证**（禁走动 + Win+Shift+S 截图工具 → Esc → 点击角色）：修复前日志 `cursor=(-1,-1)`（drag.on 卡住）；修复后 `cursor=(367,690) ignore=0 top=1 interim=1 hit=(295,586,145x209)` → **她浮出 + 互动气泡「助教！不、不要在我唱歌时恶作剧哦！」** ✓✓✓
     **教训**：**桌宠的交互状态机必须能自愈**——凡"依赖配对的鼠标按下/抬起事件"的状态（drag），都必须有"按键丢失检测 + 失焦兜底 + 重入清理"三道保险；截图工具、其它进程 SetCapture、窗口切换都会吞掉 mouseup。
     **诊断资产**：`QX_POLLLOG=1` → 主进程持久写 `poll_diag.log`（含 inside/ignore/top/interim/cursor/矩形坐标）；`scripts/list_windows.ps1`（z-order+扩展样式取证）、`scripts/screen_shot.ps1`、`scripts/mouse_capture.ps1`、`scripts/key_hotkey.ps1`、`scripts/mouse_sim.ps1`。
+19. **【第四轮·QQ 专属场景】鼠标输入被外部进程吞掉 → 物理按键交叉验证守护**：用户澄清"**只有 QQ 截图**（Ctrl+Alt+A→左键单击→回车）会卡死，Win+Shift+S 不会"。原因定位：QQ 截图工具**捕获鼠标期间吃掉 mouseup 并可能不释放输入状态**（同类现象见 StackOverflow "Mouse input not being released from other process's window"），使我们的 `drag.on` 卡死；更糟的情况下系统认为左键仍按下，`e.buttons===0` 检测失效（坑 18 的手段对这种情况无效）。
+    **最终修复（跨进程交叉验证）**：主进程在"renderer 报告拖动中"时，每 2s 调用 `scripts/mouse_guard.ps1` 查询 **`GetAsyncKeyState(VK_LBUTTON)` 物理按键状态**与前台窗口：
+    - **物理左键已松开（UP）但我们仍认为在拖动 → 断定 mouseup 丢失** → 主进程 `abortDragFromMain('mouseup-lost')`：清 force 状态 + 通过 `drag-abort` IPC 通知 renderer `abortDrag()`（实测日志 `[GUARD] physical left button is UP but drag state stuck → abort drag` ✓）；
+    - 拖动状态持续 >12s（用户不可能按住那么久）→ 强制中止（`timeout`）；
+    - 20s 硬上限兜底忽略 force。
+    **配套**：renderer 侧另有四道保险——`e.buttons===0` 的 mousemove、`blur`/`visibilitychange`、mousedown 重入先清理、**帧级 2.5s 无鼠标移动超时**（`drag.lastMoveAt`）。
+    **代价**：守护仅在"疑似拖动"时每 2s 一次 powershell 查询（~150ms，`windowsHide`），平时零开销。
+    **教训**：当卡死源于**其他进程**吞掉输入时，同一个进程内的事件兜底不够——必须**跨进程交叉验证"物理输入状态"与"逻辑状态"**；`GetAsyncKeyState`（物理按键）不受消息队列/捕获状态影响，是最可靠的裁判。
 
 ---
 
