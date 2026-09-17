@@ -69,27 +69,78 @@ let hitRects = [];              // [{x,y,w,h}] 窗口 client 坐标（CSS px）
 let hitForceInteractive = false; // 拖动/编辑等强制可交互
 let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
+let mousePollTicks = 0;
+const POLL_LOG = process.env.QX_POLLLOG === '1';
+
+// ===== 交互时"临时置顶"（根治未置顶时的点击死锁）=====
+// Windows z-order 铁律：鼠标点击永远由最上层窗口接收。未置顶时窗口沉在下层，
+// 即使把穿透关掉（可交互），点击仍被上层窗口吃掉；moveTop() 对后台非激活窗口不可靠，
+// 必须临时 setAlwaysOnTop(true) 才能真正浮起来。交互结束后（鼠标离开 ~2.6s）恢复到用户的置顶设置。
+let userTopmost = true;      // 用户"保持置顶"开关真源
+let interimTop = false;      // 因交互而临时置顶中
+let interimTopTimer = null;
+function setInterimTop(on) {
+  if (!win || win.isDestroyed()) return;
+  if (!on) {
+    if (interimTopTimer) { clearTimeout(interimTopTimer); interimTopTimer = null; }
+    if (interimTop && !userTopmost) {
+      interimTop = false;
+      try { win.setAlwaysOnTop(false, 'floating'); } catch (e) { /* noop */ }
+    }
+    interimTop = false;
+    return;
+  }
+  if (!interimTop) {
+    interimTop = true;
+    try { win.setAlwaysOnTop(true, 'floating'); } catch (e) { /* noop */ }
+  }
+  try { win.moveTop(); } catch (e) { /* noop */ }
+  if (interimTopTimer) clearTimeout(interimTopTimer);
+  interimTopTimer = setTimeout(() => { interimTopTimer = null; setInterimTop(false); }, 2600);   // 无交互 2.6s 后恢复用户设置
+}
+
 function startMousePoll() {
   if (mousePollTimer) clearInterval(mousePollTimer);
   mousePollTimer = setInterval(mousePollTick, 70);
 }
+function applyMouseIgnore(inside, cx, cy, why) {
+  mousePollInside = inside;
+  try {
+    if (why === 'resync') {
+      // 周期性"强制重应用"：先用相反值再切回——某些平台状态下（被截图工具/其它进程扰动后）
+      // 相同值重复下发不会真正刷新窗口扩展样式，值变化才会
+      win.setIgnoreMouseEvents(!inside ? false : true, { forward: true });
+    }
+    win.setIgnoreMouseEvents(!inside, { forward: true });
+    if (inside) setInterimTop(true);   // 交互时临时置顶：否则点击会被上层窗口吃掉（含被覆盖/截图工具后的场景）
+    if (POLL_LOG) {
+      let hit = '';
+      if (inside && hitRects.length) {
+        for (const r of hitRects) {
+          if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) { hit = ' hit=(' + r.x + ',' + r.y + ',' + r.w + 'x' + r.h + ')'; break; }
+        }
+      }
+      console.log('[POLL]', why, inside ? 'INTERACTIVE' : 'passthrough', 'cursor=(' + cx + ',' + cy + ')', 'rects=' + hitRects.length + hit, interimTop ? 'interimTop' : '');
+    }
+  } catch (e) { /* noop */ }
+}
 function mousePollTick() {
   if (!win || win.isDestroyed()) return;
   let inside = hitForceInteractive;
+  let cx = -1, cy = -1;
   if (!inside && hitRects.length) {
-    const p = screen.getCursorScreenPoint();   // 屏幕 DIP 坐标
+    const p = screen.getCursorScreenPoint();   // 屏幕 DIP 坐标（不受遮挡/SetCapture 影响）
     const b = win.getBounds();
-    const cx = p.x - b.x, cy = p.y - b.y;      // → 窗口 client 坐标（1:1 CSS px）
+    cx = p.x - b.x; cy = p.y - b.y;            // → 窗口 client 坐标（1:1 CSS px）
     for (const r of hitRects) {
       if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) { inside = true; break; }
     }
   }
-  if (inside === mousePollInside) return;
-  mousePollInside = inside;
-  try {
-    win.setIgnoreMouseEvents(!inside, { forward: true });
-    if (inside) win.moveTop();   // 需要交互时顺带提到同层最顶（被覆盖场景可召回）
-  } catch (e) { /* noop */ }
+  mousePollTicks++;
+  // 每 ~1s 强制重下发一次：幂等操作，用于修复被其它程序（截图工具/捕获鼠标）扰动后的平台状态漂移
+  const force = (mousePollTicks % 15 === 0);
+  if (inside === mousePollInside && !force) return;
+  applyMouseIgnore(inside, cx, cy, force ? 'resync' : 'change');
 }
 
 function appIcon(size) {
@@ -347,7 +398,11 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('set-topmost', (e, v) => {
     try {
-      if (win && !win.isDestroyed()) win.setAlwaysOnTop(!!v, 'floating');
+      userTopmost = !!v;   // 用户置顶开关真源（交互临时置顶到期后恢复到它）
+      if (win && !win.isDestroyed()) {
+        if (userTopmost) { interimTop = false; win.setAlwaysOnTop(true, 'floating'); }
+        else if (!interimTop) win.setAlwaysOnTop(false, 'floating');
+      }
       return !!(win && !win.isDestroyed() && win.isAlwaysOnTop());
     } catch (err) { return false; }
   });

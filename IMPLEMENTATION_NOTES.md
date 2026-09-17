@@ -111,6 +111,10 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **配套**：①`hit-rects` IPC（renderer 每 150ms 及浮层显隐时上报）；②renderer 不再自行调用 setMouseIgnore（避免双源打架）；③救援快捷键**候选降级**（`Control+Alt+Z → Control+Alt+D → Control+Alt+F9`，被占用自动换下一个，实际生效键经 `get-hotkey` IPC 显示在菜单底部与托盘 tooltip）；④**开机自启读取 bug 修复**——`getLoginItemSettings` 必须传与写入**完全相同的 path+args**（Windows 匹配规则），否则"设置成功但开关打不上钩"。
     **实测**（QX_NOTOP=1 + 全屏浏览器覆盖）：`[AUTOLAUNCH-TEST] before=true setTrue→true setFalse→false` ✓；`[HOTKEY] active=Control+Alt+D`（Ctrl+Alt+Z 被占用自动降级）✓；鼠标移到被覆盖的角色处 → **她自动浮到最前** ✓；覆盖状态下点击 → **互动气泡出现**（"助教！好像有正在夸我的评论诶…！"）✓✓。
     **结论：桌宠的"是否可交互"绝不能依赖窗口自身收到的鼠标事件；系统级鼠标位置轮询是遮挡/捕获场景下唯一可靠的方案。**
+17. **【第二轮·最终真相】未置顶时点击仍被上层窗口吃掉（z-order 铁律）**：坑 16 的轮询把状态切对了（日志 `[POLL] change INTERACTIVE hit=(295,586,145x209)`），但**点击依然无效**——因为 Windows 的 z-order 规则：**鼠标点击永远由最上层窗口接收**；窗口未置顶时沉在下层，即使关掉穿透，点击仍被上层窗口（浏览器/QQ 窗口）吃掉。而 `win.moveTop()` 对"未置顶的后台非激活窗口"**实测无效**（她不会浮起）——只有 `setAlwaysOnTop(true)` 才能真正提层。
+    **终极修复：交互时临时置顶**（`setInterimTop`）——主进程判定鼠标进入可交互区域（或 `hitForceInteractive` 拖动/编辑）时：`win.setAlwaysOnTop(true,'floating')` + `moveTop()`，并维护 2.6s 计时器；鼠标离开或无交互到期后，若用户置顶开关为关则 `setAlwaysOnTop(false)` 恢复（尊重用户设置）。`set-topmost` IPC 同步维护 `userTopmost` 真源（用户开关）与 `interimTop`（临时态）两个状态。
+    **实测铁证**（未置顶 + 全屏浏览器覆盖 + 站定角色）：鼠标移到她身上 → 日志 `[POLL] resync INTERACTIVE cursor=(367,690) hit=(295,586,145x209) interimTop` → **她浮到浏览器之上** → 点击 → **互动气泡「助教，我今天的……状态特别好，能加练吗！」** ✓✓✓（此前的鼠标捕获 SetCapture 模拟同样恢复正常）。
+    **教训**：①主进程轮询只解决"穿透状态正确性"；②"未置顶窗口能否被点击"是 z-order 问题，唯一解是**交互期间临时置顶**；③`moveTop()` ≠ 置顶，对后台窗口不可靠。
 
 ---
 
