@@ -67,6 +67,7 @@ function bringPetToFrontTemporarily(ms) {
 // 相比"依赖 renderer mousemove"的方案：被覆盖/被截图工具接管后可自动恢复，不会永久卡死。
 let hitRects = [];              // [{x,y,w,h}] 窗口 client 坐标（CSS px）
 let hitForceInteractive = false; // 拖动/编辑等强制可交互
+let hitForceSince = 0;           // force 起始时间（超时兜底：renderer 若卡住则不再永久置顶）
 let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
 let mousePollTicks = 0;
@@ -121,11 +122,26 @@ function applyMouseIgnore(inside, cx, cy, why) {
         }
       }
       console.log('[POLL]', why, inside ? 'INTERACTIVE' : 'passthrough', 'cursor=(' + cx + ',' + cy + ')', 'rects=' + hitRects.length + hit, interimTop ? 'interimTop' : '');
+      // 持久化现场轨迹（QX_POLLLOG=1 时写入项目根 poll_diag.log，用于复现后取证）
+      try {
+        const rectsDump = hitRects.slice(0, 4).map((r) => r.x + ',' + r.y + ',' + r.w + 'x' + r.h).join(' | ');
+        fs.appendFileSync(path.join(__dirname, 'poll_diag.log'),
+          new Date().toISOString() + ' ' + why + ' ' + (inside ? 'INTERACTIVE' : 'passthrough') +
+          ' cursor=(' + cx + ',' + cy + ') rects=' + hitRects.length +
+          ' ignore=' + (mousePollInside ? 0 : 1) + ' top=' + (win.isAlwaysOnTop() ? 1 : 0) +
+          ' interim=' + (interimTop ? 1 : 0) + ' focusable=' + (win.isFocusable() ? 1 : 0) + hit +
+          ' R[' + rectsDump + ']\n');
+      } catch (e) { /* noop */ }
     }
   } catch (e) { /* noop */ }
 }
 function mousePollTick() {
   if (!win || win.isDestroyed()) return;
+  // 超时兜底：force（拖动中）持续 >20s 视为 renderer 状态卡住 → 忽略，避免永久临时置顶
+  if (hitForceInteractive && hitForceSince && Date.now() - hitForceSince > 20000) {
+    hitForceInteractive = false;
+    hitForceSince = 0;
+  }
   let inside = hitForceInteractive;
   let cx = -1, cy = -1;
   if (!inside && hitRects.length) {
@@ -567,7 +583,10 @@ app.whenReady().then(() => {
   ipcMain.on('hit-rects', (e, payload) => {
     if (!payload) return;
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
-    hitForceInteractive = !!payload.force;
+    const f = !!payload.force;
+    if (f && !hitForceInteractive) hitForceSince = Date.now();
+    if (!f) hitForceSince = 0;
+    hitForceInteractive = f;
   });
   // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
   ipcMain.on('move-top', () => {

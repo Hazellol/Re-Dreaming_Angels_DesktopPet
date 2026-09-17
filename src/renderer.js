@@ -600,6 +600,7 @@
     if (dialog.open) return;
     const key = hitIdol(e.clientX, e.clientY);
     if (!key) return;
+    if (drag.on) abortDrag();   // 上次拖动异常未结束（mouseup 丢失）：先清理，保证本次点击走正常流程
     stopChatter();   // 用户碰角色：中止互聊
     // 双击聊天（第二次按下，与上一次单击间隔 <240ms 且同角色）
     if (clickTimer && clickKey === key) {
@@ -617,8 +618,33 @@
     drag.ox = c.container.x; drag.oy = c.container.y;
     if (c.walking) { c.walkTween = null; c.walking = false; clearIdolFace(key); }
   });
+  // ⚠️ 拖动中断兜底（根治"卡死"）：截图工具/其他全屏窗口捕获鼠标时，会让我们的 mouseup 丢失，
+  //    导致 drag.on 永久停在 true → 后续所有点击被当作"拖动中"处理 → 点不了任何东西
+  //    （现象：能弹右键菜单，但点不动角色/菜单项）。以下三条自救路径保证拖动状态一定会被清除。
+  function abortDrag() {
+    if (!drag.on) return;
+    const key = drag.key;
+    const moved = drag.moved;
+    drag.on = false;
+    drag.key = null;
+    drag.moved = false;
+    if (!key || !idols[key]) return;
+    clearIdolFace(key);
+    const c = idols[key];
+    if (moved && !gravityOn) {
+      // 拖动过：踱步区跟随落点（与正常 mouseup 一致），避免她走回旧路点
+      c.cfg.waypoints = [
+        { x: Math.max(60, c.container.x - 110), y: c.container.y, dir: -1 },
+        { x: Math.min(viewW - 60, c.container.x + 150), y: c.container.y, dir: 1 }
+      ];
+    }
+  }
+  window.addEventListener('blur', abortDrag);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) abortDrag(); });
   window.addEventListener('mousemove', (e) => {
     if (!drag.on) return;
+    // 拖动中收到"没有任何按键按下"的 mousemove = mouseup 已丢失 → 立即中断拖动
+    if (e.buttons === 0) { abortDrag(); return; }
     const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
     if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 5) {
       drag.moved = true;

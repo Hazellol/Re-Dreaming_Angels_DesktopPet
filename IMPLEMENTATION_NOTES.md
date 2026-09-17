@@ -115,6 +115,18 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **终极修复：交互时临时置顶**（`setInterimTop`）——主进程判定鼠标进入可交互区域（或 `hitForceInteractive` 拖动/编辑）时：`win.setAlwaysOnTop(true,'floating')` + `moveTop()`，并维护 2.6s 计时器；鼠标离开或无交互到期后，若用户置顶开关为关则 `setAlwaysOnTop(false)` 恢复（尊重用户设置）。`set-topmost` IPC 同步维护 `userTopmost` 真源（用户开关）与 `interimTop`（临时态）两个状态。
     **实测铁证**（未置顶 + 全屏浏览器覆盖 + 站定角色）：鼠标移到她身上 → 日志 `[POLL] resync INTERACTIVE cursor=(367,690) hit=(295,586,145x209) interimTop` → **她浮到浏览器之上** → 点击 → **互动气泡「助教，我今天的……状态特别好，能加练吗！」** ✓✓✓（此前的鼠标捕获 SetCapture 模拟同样恢复正常）。
     **教训**：①主进程轮询只解决"穿透状态正确性"；②"未置顶窗口能否被点击"是 z-order 问题，唯一解是**交互期间临时置顶**；③`moveTop()` ≠ 置顶，对后台窗口不可靠。
+18. **【第三轮·真凶】`drag.on` 卡死 → 所有点击失效（QQ 截图/系统截图后"卡死"的真正机制）**：用户复现路径 `Ctrl+Alt+A → 左键单击 → 回车`（QQ 截图），现象=**能弹右键菜单但点不动任何东西**。人家用等效工具（系统截图 Win+Shift+S / 自制 `SetCapture` 覆盖窗口）复现并**靠持久化状态日志抓到铁证**：
+    - 截图工具捕获鼠标期间，用户那次"左键单击"的 **mousedown 到达了我们的窗口，但 mouseup 被截图工具吃掉** → `drag.on` **永久停在 true**（日志特征：主进程轮询里 `cursor=(-1,-1)`——因为 renderer 持续上报 `forceInteractive=true` 而跳过读光标）；
+    - 后果：此后每次点击都被当作"拖动开始"，而 `mouseup` 又收不到 → **互动永远不触发**（而 `contextmenu` 是独立事件，所以右键菜单照样弹出——与用户描述 100% 吻合）；同时主进程永久 INTERACTIVE + 永久临时置顶（她浮在最上面，看似正常实则点不动）。
+    **修复（三条自救路径 + 一道主进程兜底）**：
+    1. `mousemove` 中检测 **`e.buttons === 0`**（拖动中却没有任何按键按下 = mouseup 已丢失）→ `abortDrag()` 立即中断拖动；
+    2. `window.blur` / `document.visibilitychange(hidden)` → `abortDrag()`；
+    3. `mousedown` 时若 `drag.on` 仍为真（上次异常未结束）→ **先 `abortDrag()`** 再开始新流程；
+    4. 主进程：`hitForceInteractive` 持续 >20s 视为 renderer 卡住 → 忽略（避免永久临时置顶）。
+    `abortDrag()` 清理拖动状态 + `clearIdolFace` 恢复表情 + 非重力下把踱步路点更新到当前落点（与正常 mouseup 一致，不触发误点击）。
+    **实测铁证**（禁走动 + Win+Shift+S 截图工具 → Esc → 点击角色）：修复前日志 `cursor=(-1,-1)`（drag.on 卡住）；修复后 `cursor=(367,690) ignore=0 top=1 interim=1 hit=(295,586,145x209)` → **她浮出 + 互动气泡「助教！不、不要在我唱歌时恶作剧哦！」** ✓✓✓
+    **教训**：**桌宠的交互状态机必须能自愈**——凡"依赖配对的鼠标按下/抬起事件"的状态（drag），都必须有"按键丢失检测 + 失焦兜底 + 重入清理"三道保险；截图工具、其它进程 SetCapture、窗口切换都会吞掉 mouseup。
+    **诊断资产**：`QX_POLLLOG=1` → 主进程持久写 `poll_diag.log`（含 inside/ignore/top/interim/cursor/矩形坐标）；`scripts/list_windows.ps1`（z-order+扩展样式取证）、`scripts/screen_shot.ps1`、`scripts/mouse_capture.ps1`、`scripts/key_hotkey.ps1`、`scripts/mouse_sim.ps1`。
 
 ---
 
