@@ -2,7 +2,7 @@
 // 模式：v2.4 起仅桌面版（透明窗口、点击穿透、角色直接站在桌面上；房间版已移除）
 //   控制面板：启动时打开（分别控制三小只开关）；叉掉 = 隐藏到系统托盘
 //   调试：--screenshot [delayMs] ["query"] 自动截图退出；--drag-test 自动模拟拖动；--panel-shot [delayMs]
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -32,6 +32,26 @@ function toggleMainWindow() {
   for (const key of Object.keys(idolVis)) {
     // 隐藏=全部 false；显示=恢复各滑块状态（idolVis 真源，不覆盖滑块值）
     win.webContents.send('set-idol-visibility', key, idolsAllHidden ? false : idolVis[key]);
+  }
+}
+
+// 保底召回：把三小只提到最前（临时置顶 1.8s 后恢复用户的置顶设置）
+// 用途：未置顶时被最大化窗口完全覆盖 → Windows 不会给被遮挡的下层窗口任何鼠标消息，
+// 悬停/右键物理上无法召回（穿透态收不到 mousemove 会死锁）；托盘点击 / 全局快捷键是可靠入口。
+let tempTopTimer = null;
+function bringPetToFrontTemporarily(ms) {
+  if (!win || win.isDestroyed()) return;
+  const wasTop = win.isAlwaysOnTop();
+  try {
+    win.setAlwaysOnTop(true, 'floating');
+    win.moveTop();
+    win.setFocusable(false);   // 仍不抢焦点（不打断视频/游戏）
+  } catch (e) { /* noop */ }
+  if (!wasTop) {
+    if (tempTopTimer) clearTimeout(tempTopTimer);
+    tempTopTimer = setTimeout(() => {
+      try { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false, 'floating'); } catch (e) { /* noop */ }
+    }, ms || 1800);
   }
 }
 
@@ -215,10 +235,19 @@ app.whenReady().then(() => {
   // 系统托盘图标（Hidden-icons menu 入口）
   try {
     tray = new Tray(appIcon(32));
-    tray.setToolTip('妄想天使桌宠');
+    tray.setToolTip('妄想天使桌宠（点击提到最前）');
     rebuildTrayMenu();
-    tray.on('click', () => toggleMainWindow());
+    tray.on('click', () => bringPetToFrontTemporarily(1800));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
   } catch (e) { console.error('tray init failed', e); }
+  // 全局快捷键：Ctrl+Alt+Z → 把三小只提到最前（未置顶被最大化窗口盖住时的救援入口）
+  try {
+    const hkOk = globalShortcut.register('Control+Alt+Z', () => bringPetToFrontTemporarily(1800));
+    console.log('[HOTKEY] Ctrl+Alt+Z registered =', hkOk);
+  } catch (e) { console.error('[HOTKEY] register failed', e); }
+  // 调试：QX_FRONTTEST=1 → 启动 5s 后自动执行一次"提到最前"（验证被覆盖时的提层机制）
+  if (process.env.QX_FRONTTEST === '1') {
+    setTimeout(() => { console.log('[FRONTTEST] bring pet to front now'); bringPetToFrontTemporarily(8000); }, 5000);
+  }
 
   ipcMain.on('quit', () => { app.isQuitting = true; app.quit(); });
   ipcMain.on('toggle-idol-window', () => toggleMainWindow());
@@ -441,10 +470,12 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => { app.isQuitting = true; });
+app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch (e) { /* noop */ } });
 
 function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '📌 把三小只提到最前', click: () => bringPetToFrontTemporarily(1800) },
     { label: '打开控制面板', click: () => { if (panel && !panel.isDestroyed()) panel.show(); else createPanelWindow(); } },
     { label: '显示/隐藏小偶像', click: () => toggleMainWindow() },
     { type: 'separator' },
