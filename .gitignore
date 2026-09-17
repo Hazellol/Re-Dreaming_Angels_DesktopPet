@@ -8,6 +8,7 @@ data/
 
 # 日志与临时
 *.log
+*.err
 shot.png
 panel-shot.png
 dbg_run.log
