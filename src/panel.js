@@ -170,22 +170,37 @@
     });
   }
 
-  // 开机自启动（系统级登录项，切换即生效；状态由系统记录，读取刷新）
+  // 开机自启动（主页开关；系统级登录项，切换即生效；状态由系统记录，读取刷新）
   const elAuto = document.getElementById('sys-autolaunch');
   const elAutoHint = document.getElementById('sys-autolaunch-hint');
-  (async () => {
-    try { elAuto.checked = await dk.getAutoLaunch(); } catch (e) { /* noop */ }
-  })();
-  elAuto.addEventListener('change', async () => {
-    try {
-      const now = await dk.setAutoLaunch(elAuto.checked);
-      elAuto.checked = now;
-      elAutoHint.textContent = now ? '✅ 已开启：随 Windows 登录自动启动' : '已关闭（切换即生效）';
-      elAutoHint.style.color = now ? '#d0408a' : '';
-    } catch (e) {
-      elAutoHint.textContent = '设置失败：' + e.message;
+  const elAutoState = document.getElementById('sys-autolaunch-state');
+  const elAutoWrap = document.getElementById('btn-autolaunch-wrap');
+  function renderAutoState(on) {
+    if (elAuto) elAuto.checked = !!on;
+    if (elAutoState) elAutoState.textContent = '⚙ 开机自启动：' + (on ? '开' : '关');
+    if (elAutoHint) {
+      elAutoHint.textContent = on ? '✅ 已开启：随 Windows 登录自动启动' : '开机自启动可在此开关';
+      elAutoHint.style.color = on ? '#d0408a' : '';
     }
-  });
+  }
+  (async () => {
+    try { renderAutoState(await dk.getAutoLaunch()); } catch (e) { /* noop */ }
+  })();
+  if (elAuto) {
+    elAuto.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      try {
+        const now = await dk.setAutoLaunch(elAuto.checked);
+        renderAutoState(now);
+      } catch (err) { renderAutoState(elAuto.checked); }
+    });
+  }
+  if (elAutoWrap) {
+    elAutoWrap.addEventListener('click', (e) => {
+      if (e.target === elAuto) return;   // 复选框自身已处理
+      if (elAuto) elAuto.click();
+    });
+  }
 
   loadCfg();
   fillForm();

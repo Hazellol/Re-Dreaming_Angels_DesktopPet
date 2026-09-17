@@ -224,8 +224,12 @@
         <div id="cards"></div>
         <div id="footer">
           <div class="f-btn" id="btn-show">👀 显示/隐藏小偶像</div>
+          <div class="f-btn" id="btn-autolaunch-wrap" title="随 Windows 登录自动启动桌宠（切换即生效）">
+            <span id="sys-autolaunch-state">⚙ 开机自启动：关</span>
+            <input type="checkbox" id="sys-autolaunch" style="accent-color:#e0559a;width:16px;height:16px;margin-left:6px;vertical-align:-3px;">
+          </div>
         </div>
-        <div id="hintline">✕ 关闭本窗口不会停止桌宠（最小化到系统托盘） · 托盘点图标可随时找回</div>
+        <div id="hintline">✕ 关闭本窗口不会停止桌宠（最小化到系统托盘） · 托盘点图标可随时找回 · <span id="sys-autolaunch-hint">开机自启动可在此开关</span></div>
         <div id="deco">
           <span class="deco-note" style="--d:0s">🎵</span>
           <span class="deco-note" style="--d:.7s">♪</span>
@@ -288,11 +292,6 @@
             <label>保存历史对话</label>
             <input type="checkbox" id="ai-history" checked>
             <span class="ai-hint">存在本地 data/chat_*.json，下次接上</span>
-          </div>
-          <div class="ai-row check">
-            <label>开机自启动</label>
-            <input type="checkbox" id="sys-autolaunch">
-            <span class="ai-hint" id="sys-autolaunch-hint">随 Windows 登录自动启动桌宠（切换即生效）</span>
           </div>
           <div style="margin-top:14px;">
             <button class="ai-btn pink" id="ai-save" style="width:100%;padding:10px 0;font-size:13px;">💾 保存配置（立即生效）</button>

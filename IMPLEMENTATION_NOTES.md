@@ -114,7 +114,8 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
 
 | 日期 | 现象 | 根因 | 修法 | 验证 |
 |---|---|---|---|---|
-| 2026-09 | **功能新增批**：开机自启 / 保持置顶开关 / 播放器导入歌曲 | —（新需求） | ①控制台「开机自启动」开关（`app.setLoginItemSettings`，开发模式附项目路径参数，切换即生效）；②右键菜单「📌 保持置顶」开/关（`win.setAlwaysOnTop(v,'floating')`，记忆 `QX_TOPMOST`，启动时应用）；③播放器「➕ 添加歌曲」：`dialog.showOpenDialog` 多选 → 复制到 `%APPDATA%\ReDreamingAngels\bgm`（打包版 assets 只读的统一用户目录）→ `rescanBgm()` 重扫（`listAudio` 合并内置+用户目录并去重；`readAudio` 双目录兜底；aac 支持） | 菜单置顶项截图 ✓；语法/运行零错误 ✓；导入对话框待手动点 ➕ 验证 |
+| 2026-09 | **功能新增批**：开机自启 / 保持置顶开关 / 播放器导入歌曲 | —（新需求） | ①控制台「开机自启动」开关（`app.setLoginItemSettings`，开发模式附项目路径参数，切换即生效；**入口在控制台主页**，与"显示/隐藏小偶像"并排）；②右键菜单「📌 保持置顶」开/关（`win.setAlwaysOnTop(v,'floating')`，记忆 `QX_TOPMOST`，启动时应用）；③播放器「➕ 添加歌曲」：`dialog.showOpenDialog` 多选 → 复制到 `%APPDATA%\ReDreamingAngels\bgm`（打包版 assets 只读的统一用户目录）→ `rescanBgm()` 重扫（`listAudio` 合并内置+用户目录并去重；`readAudio` 双目录兜底；aac 支持） | 菜单置顶项/主页开关截图 ✓；语法/运行零错误 ✓；导入对话框待手动点 ➕ 验证 |
+| 2026-09 | **未置顶时被最大化窗口完全覆盖 → 无法互动**（菜单能出现但点不到任何选项；被最小化窗口遮挡则正常）——用户实测 | 双重原因叠加：①窗口 z-order 在覆盖者之下；②为"不抢焦点"设置的 `setFocusable(false)` 使点击**不会像普通窗口那样激活/浮到前面** → 窗口永久沉底；虽然穿透切换会收到 mousemove 并渲染菜单，但点击事件仍被上层窗口吃掉 | 三处提层：①`set-mouse-ignore(false)`（要交互）时顺带 `win.moveTop()`；②新增 `move-top` IPC；③renderer `bringToFront()`（菜单/面板/对话框打开）同步 `moveTop()+setMouseIgnore(false)`——**不改变用户的置顶开关语义**，仅在需要交互时把窗口提到同层最顶 | 逻辑修复；需真实"最大化窗口覆盖"场景复测（主人验证） |
 
 ---
 

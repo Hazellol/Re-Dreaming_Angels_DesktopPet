@@ -804,6 +804,10 @@
   function bringToFront(elm) {
     frontZ += 1;
     elm.style.zIndex = String(frontZ);
+    // 窗口层级同步提起：未置顶时被上层窗口遮挡也能操作（配合 set-mouse-ignore 的 moveTop 双保险）
+    try { dk.moveTop(); } catch (e) { /* noop */ }
+    // 浮层要能点到：确保窗口此刻接收鼠标事件
+    try { dk.setMouseIgnore(false); } catch (e) { /* noop */ }
   }
   function openPanelAt(elm, x, y) {
     bringToFront(elm);   // 打开即置顶
@@ -1259,7 +1263,7 @@
     if (trioBtn) trioBtn.classList.toggle('disabled', chatter.active || ROLE_KEYS.some((k) => !chatterIdxOk(k)));
   }
   function showCtxMenu(x, y) {
-    bringToFront(ctxMenu);   // 菜单也在聚焦层级中
+    bringToFront(ctxMenu);   // 菜单也在聚焦层级中 + 提层/接收鼠标（含 moveTop）
     lastCtx = { x, y };
     ctxRole = hitIdol(x, y) || null;
     refreshCtxMenu();

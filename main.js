@@ -409,8 +409,19 @@ app.whenReady().then(() => {
   ipcMain.on('set-focusable', (e, v) => {
     if (win && !win.isDestroyed()) win.setFocusable(!!v);
   });
+  // 鼠标穿透切换：要交互（ignore=false）时**顺带把窗口提到同层最顶**——
+  // 否则"未置顶 + 被最大化窗口完全覆盖"时，窗口沉在下面且 setFocusable(false) 不会被点击激活，
+  // 导致能渲染菜单却点不到任何东西（用户实测 bug）。
   ipcMain.on('set-mouse-ignore', (e, ignore) => {
-    if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!!ignore, { forward: true });
+    if (!win || win.isDestroyed()) return;
+    win.setIgnoreMouseEvents(!!ignore, { forward: true });
+    if (!ignore) {
+      try { win.moveTop(); } catch (err) { /* noop */ }
+    }
+  });
+  // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
+  ipcMain.on('move-top', () => {
+    if (win && !win.isDestroyed()) { try { win.moveTop(); } catch (e) { /* noop */ } }
   });
   ipcMain.on('context-menu', () => { /* 菜单已迁移为 renderer DOM 菜单 */ });
 

@@ -135,5 +135,6 @@ contextBridge.exposeInMainWorld('deskpet', {
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),
   setMouseIgnore: (ignore) => ipcRenderer.send('set-mouse-ignore', ignore),
+  moveTop: () => ipcRenderer.send('move-top'),
   quit: () => ipcRenderer.send('quit')
 });
