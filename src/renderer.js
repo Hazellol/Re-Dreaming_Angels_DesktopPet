@@ -2111,6 +2111,12 @@
   // ================= 桌面版穿透（主进程轮询裁决）=================
   // 设计：renderer 只负责"上报可交互矩形"，穿透状态由主进程用系统级鼠标位置轮询决定——
   // 因为窗口被覆盖 / 被 QQ 截图等 SetCapture 接管时，renderer 收不到 mousemove 会永久死锁。
+  // 另外上报"鼠标事件心跳"：主进程据此判断输入通道是否失效（被遮挡/截图后 Chromium 输入通道可能坏掉）
+  let mouseEventCount = 0;
+  const SIM_STUCK = dk.env('QX_SIMULATE_STUCK') === '1';   // 调试：模拟"输入通道失效"（不计数）以验证自愈
+  for (const ev of ['mousemove', 'mousedown', 'mouseup', 'contextmenu', 'wheel']) {
+    document.addEventListener(ev, () => { if (!SIM_STUCK) mouseEventCount++; }, true);
+  }
   let mouseOverUi = null;
   let lastMouse = { x: -1, y: -1 };   // 最近一次鼠标位置（窗口内事件的参考值）
   let lastRectsJson = '';
@@ -2138,7 +2144,7 @@
     const forceInteractive = !!(drag.on || editMsgIndex != null);
     if (!force && json === lastRectsJson && !forceInteractive) return;
     lastRectsJson = json;
-    try { dk.sendHitRects(rects, forceInteractive); } catch (e) { /* noop */ }
+    try { dk.sendHitRects(rects, forceInteractive, mouseEventCount); } catch (e) { /* noop */ }
   }
   setInterval(() => reportHitRects(false), 150);   // 角色走动/动画 → 矩形小幅变化，周期性上报
   // 内部状态刷新（用于其它逻辑/hover 效果；穿透不再由这里下发）

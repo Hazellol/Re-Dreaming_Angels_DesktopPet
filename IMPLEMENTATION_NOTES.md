@@ -135,6 +135,12 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **配套**：renderer 侧另有四道保险——`e.buttons===0` 的 mousemove、`blur`/`visibilitychange`、mousedown 重入先清理、**帧级 2.5s 无鼠标移动超时**（`drag.lastMoveAt`）。
     **代价**：守护仅在"疑似拖动"时每 2s 一次 powershell 查询（~150ms，`windowsHide`），平时零开销。
     **教训**：当卡死源于**其他进程**吞掉输入时，同一个进程内的事件兜底不够——必须**跨进程交叉验证"物理输入状态"与"逻辑状态"**；`GetAsyncKeyState`（物理按键）不受消息队列/捕获状态影响，是最可靠的裁判。
+20. **【第五轮·疑似终极根因】Chromium 窗口遮挡检测 + 输入通道心跳自愈**：用户澄清"**只要被别的全屏窗口覆盖过一次，本次就会一直卡死（待机动画却正常）**"——这是"输入通道"而非"事件配对"层面的问题。定位到 Chromium 在 Windows 上的 **原生窗口遮挡计算**（`CalculateNativeWinOcclusion`）：透明桌宠窗口长期处于被遮挡状态，一旦被判 occluded，Chromium 会停止其渲染/输入通道（`backgroundThrottling:false` 只能保住动画，救不了输入）→ **永久收不到鼠标事件**（而窗口 exStyle/层级/我们的轮询状态看起来全部正常，取证确认 `ex=0x08200008` 含 TOPMOST ✓）。
+    **修复（双保险）**：
+    1. **禁用遮挡检测**：`app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')`（Electron 社区处理"透明覆盖层被遮挡后异常"的标准解法）；
+    2. **输入通道心跳 + 三级自愈**：renderer 上报鼠标事件计数（`hit-rects` 附带 `evtCount`）；主进程判据=**光标正在移动（1.2s 内位置变化）却 1.2s 收不到任何 renderer 鼠标事件** → 判定通道失效 → 3s 限频自愈：**L1** 强制刷新穿透状态（值变化才真正重设扩展样式）→ **L2** 刷新层级＋微调窗口尺寸（触发重配/重绘）→ **L3** 兜底重载渲染进程（每会话上限 3 次）。`QX_SIMULATE_STUCK=1` 可模拟通道失效以验证自愈。
+    **实测**：正常操作零误报；模拟通道失效时日志 `[SELFHEAL] input channel stalled (cursor moving, no renderer events) → level 1` ✓（判据经过一次修正——初版用"事件计数停滞"会误报鼠标静止场景，改为"光标在动 + 事件停滞"的交叉判据）。
+    **若该修复仍不足**，备选重写方向（评估中）：①**每角色独立小窗口且不穿透**（最接近主流桌宠做法，点击永不卡死；气泡/面板需独立窗口）；②**native 模块 per-pixel hit test**（`SetWindowRgn`/`WM_NCHITTEST`，最接近原生桌宠，需编译 native）。
 
 ---
 

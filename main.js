@@ -16,6 +16,12 @@ const NOTOP = process.env.QX_NOTOP === '1';
 // 单实例锁：防止重复启动产生多个桌宠实例（重复双击启动器/vbs → 唤起已有实例的控制台并退出）
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); return; }
+// ⚠️ 关键：禁用 Chromium 的"原生窗口遮挡计算"（Windows）。
+// 默认情况下 Chromium 一旦判定透明桌宠窗口被其它窗口完全遮挡，就会把窗口标记为 occluded，
+// 停止其渲染/输入通道；用户实测"被全屏窗口覆盖过一次后，鼠标交互永久失效（待机动画仍正常）"
+// 正是这个机制造成的（backgroundThrottling:false 只保证动画，救不了输入通道）。
+// 桌面宠物的窗口本来就长期处于"被遮挡/部分遮挡"状态，必须关掉该特性。
+try { app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion'); } catch (e) { /* noop */ }
 // 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
 app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {
@@ -143,6 +149,69 @@ function abortDragFromMain(reason) {
   try { if (win && !win.isDestroyed()) win.webContents.send('drag-abort', reason); } catch (e) { /* noop */ }
 }
 // （拖动守护逻辑见下方 mousePollTick 内的 GUARD 段）
+// ===== 输入通道心跳 + 自愈 =====
+// 背景（用户实测）：桌宠被全屏窗口覆盖过一次后，鼠标交互会永久失效（待机动画仍正常）——
+// 即 Chromium 的输入通道被破坏/遮挡判定卡住，而窗口样式、层级、我们的轮询状态全部看起来正常。
+// 方案：不猜根因——renderer 上报"鼠标事件计数"，主进程发现"鼠标就在可交互区域、却长时间收不到
+// 任何鼠标事件"即判定输入通道失效，并按 L1→L2→L3 递增强度自动修复。
+let lastEvtCount = 0;
+let lastEvtChangeAt = Date.now();
+let healLevel = 0;
+let lastHealAt = 0;
+let reloadCount = 0;
+let prevCursor = { x: -1, y: -1 };
+let cursorMovedAt = 0;
+// 判据（精确、无误报）：**光标正在移动** 却 **renderer 长时间收不到任何鼠标事件** → 输入通道失效。
+// （鼠标静止不动时事件计数本就不增长，不能据此判断——否则会疯狂误报。）
+function checkInputChannel(cx, cy) {
+  const now = Date.now();
+  if (cx >= 0 && (cx !== prevCursor.x || cy !== prevCursor.y)) {
+    prevCursor = { x: cx, y: cy };
+    cursorMovedAt = now;
+  }
+  if (mousePollInside !== true) { lastEvtChangeAt = now; return; }   // 鼠标不在可交互区域：无需判断
+  if (now - lastHealAt < 3000) return;                               // 自愈限频（3s）
+  const cursorActive = (now - cursorMovedAt) < 1200;                 // 光标最近 1.2s 内移动过
+  const evtStale = (now - lastEvtChangeAt) > 1200;                   // renderer 却 1.2s 没收到事件
+  if (!(cursorActive && evtStale)) return;
+  lastHealAt = now;
+  healLevel++;
+  const level = ((healLevel - 1) % 3) + 1;
+  console.log('[SELFHEAL] input channel stalled (cursor moving, no renderer events) → level ' + level + ' (#' + healLevel + ')');
+  if (POLL_LOG) {
+    try {
+      fs.appendFileSync(path.join(__dirname, 'poll_diag.log'),
+        new Date().toISOString() + ' SELFHEAL level=' + level + ' stale=' + stale + ' healCount=' + healLevel + '\n');
+    } catch (e) { /* noop */ }
+  }
+  try {
+    if (level === 1) {
+      // L1：强制刷新穿透状态（值变化才会真正重设窗口扩展样式）
+      win.setIgnoreMouseEvents(true, { forward: true });
+      setTimeout(() => { try { if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(false, { forward: true }); } catch (e) { /* noop */ } }, 120);
+    } else if (level === 2) {
+      // L2：刷新层级 + 轻微改变窗口尺寸（触发窗口重新配置与重绘）
+      const b = win.getBounds();
+      win.setAlwaysOnTop(false, 'floating');
+      win.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height + 1 });
+      setTimeout(() => {
+        try {
+          if (!win || win.isDestroyed()) return;
+          win.setBounds(b);
+          win.setAlwaysOnTop(true, 'floating');
+          win.moveTop();
+        } catch (e) { /* noop */ }
+      }, 120);
+    } else {
+      // L3：兜底——重载渲染进程（会重置角色位置/关闭聊天）；每会话最多 3 次
+      if (reloadCount < 3) {
+        reloadCount++;
+        console.log('[SELFHEAL] L3 reload webContents (' + reloadCount + '/3)');
+        win.webContents.reload();
+      }
+    }
+  } catch (e) { /* noop */ }
+}
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
   try {
@@ -209,6 +278,7 @@ function mousePollTick() {
   const force = (mousePollTicks % 15 === 0);
   if (inside === mousePollInside && !force) return;
   applyMouseIgnore(inside, cx, cy, force ? 'resync' : 'change');
+  checkInputChannel(cx, cy);   // 输入通道心跳检测（光标在动却收不到事件 → L1→L2→L3 自愈）
 }
 
 function appIcon(size) {
@@ -631,7 +701,7 @@ app.whenReady().then(() => {
     if (!win || win.isDestroyed()) return;
     win.setIgnoreMouseEvents(!!ignore, { forward: true });
   });
-  // renderer 上报"可交互矩形"（角色 bbox + 打开的浮层）→ 主进程轮询裁决穿透
+  // renderer 上报"可交互矩形"（角色 bbox + 打开的浮层）→ 主进程轮询裁决穿透；同时上报鼠标事件计数（心跳）
   ipcMain.on('hit-rects', (e, payload) => {
     if (!payload) return;
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
@@ -639,6 +709,8 @@ app.whenReady().then(() => {
     if (f && !hitForceInteractive) hitForceSince = Date.now();
     if (!f) hitForceSince = 0;
     hitForceInteractive = f;
+    const ec = payload.evtCount | 0;
+    if (ec !== lastEvtCount) { lastEvtCount = ec; lastEvtChangeAt = Date.now(); }
   });
   // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
   ipcMain.on('move-top', () => {
