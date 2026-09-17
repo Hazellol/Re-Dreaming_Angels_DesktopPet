@@ -2,7 +2,7 @@
 // 模式：v2.4 起仅桌面版（透明窗口、点击穿透、角色直接站在桌面上；房间版已移除）
 //   控制面板：启动时打开（分别控制三小只开关）；叉掉 = 隐藏到系统托盘
 //   调试：--screenshot [delayMs] ["query"] 自动截图退出；--drag-test 自动模拟拖动；--panel-shot [delayMs]
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -232,6 +232,69 @@ app.whenReady().then(() => {
   // 剪贴板（聊天输入右键复制/粘贴/消息复制按钮用）
   ipcMain.handle('clipboard-read', () => clipboard.readText());
   ipcMain.handle('clipboard-write', (e, text) => { clipboard.writeText(String(text == null ? '' : text)); return true; });
+
+  // ===== 系统类开关：开机自启动 / 保持置顶 =====
+  ipcMain.handle('get-auto-launch', () => {
+    try { return !!app.getLoginItemSettings().openAtLogin; } catch (e) { return false; }
+  });
+  ipcMain.handle('set-auto-launch', (e, v) => {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: !!v,
+        path: process.execPath,
+        // 开发模式（未打包）需附带项目路径参数，打包版无需
+        args: app.isPackaged ? [] : [path.resolve(__dirname)]
+      });
+      return !!app.getLoginItemSettings().openAtLogin;
+    } catch (err) { return false; }
+  });
+  ipcMain.handle('get-topmost', () => {
+    try { return win && !win.isDestroyed() ? win.isAlwaysOnTop() : true; } catch (e) { return true; }
+  });
+  ipcMain.handle('set-topmost', (e, v) => {
+    try {
+      if (win && !win.isDestroyed()) win.setAlwaysOnTop(!!v, 'floating');
+      return !!(win && !win.isDestroyed() && win.isAlwaysOnTop());
+    } catch (err) { return false; }
+  });
+
+  // ===== 播放器：导入歌曲（对话框多选 → 复制到用户歌曲目录 %APPDATA%/ReDreamingAngels/bgm） =====
+  const USER_BGM_DIR = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+  ipcMain.handle('import-bgm', async () => {
+    try {
+      const r = await dialog.showOpenDialog(win, {
+        title: '选择要加入播放器的歌曲',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: '音频文件', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac'] }]
+      });
+      if (r.canceled || !r.filePaths || !r.filePaths.length) return { ok: false, canceled: true, added: [] };
+      fs.mkdirSync(USER_BGM_DIR, { recursive: true });
+      const added = [];
+      for (const src of r.filePaths) {
+        try {
+          const base = path.basename(src);
+          let dst = path.join(USER_BGM_DIR, base);
+          if (fs.existsSync(dst)) {                       // 重名：加序号后缀，避免覆盖
+            const ext = path.extname(base);
+            const stem = path.basename(base, ext);
+            let n = 2;
+            while (fs.existsSync(dst)) { dst = path.join(USER_BGM_DIR, stem + '_' + n + ext); n++; }
+          }
+          fs.copyFileSync(src, dst);
+          added.push(path.basename(dst));
+        } catch (err) { /* 单个失败跳过 */ }
+      }
+      return { ok: added.length > 0, added };
+    } catch (err) {
+      return { ok: false, error: err.message, added: [] };
+    }
+  });
+  ipcMain.handle('list-user-bgm', () => {
+    try {
+      if (!fs.existsSync(USER_BGM_DIR)) return [];
+      return fs.readdirSync(USER_BGM_DIR).filter((f) => /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(f));
+    } catch (e) { return []; }
+  });
 
   // ===== AI 对话（DeepSeek）：渲染进程经 IPC 转发到主进程请求（浏览器 CORS 限制，Node fetch 无此限制） =====
   // payload: { role, messages:[{role,content}...], cfg:{apiKey,model,temperature,maxTokens,webSearch} }

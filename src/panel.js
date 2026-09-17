@@ -170,6 +170,23 @@
     });
   }
 
+  // 开机自启动（系统级登录项，切换即生效；状态由系统记录，读取刷新）
+  const elAuto = document.getElementById('sys-autolaunch');
+  const elAutoHint = document.getElementById('sys-autolaunch-hint');
+  (async () => {
+    try { elAuto.checked = await dk.getAutoLaunch(); } catch (e) { /* noop */ }
+  })();
+  elAuto.addEventListener('change', async () => {
+    try {
+      const now = await dk.setAutoLaunch(elAuto.checked);
+      elAuto.checked = now;
+      elAutoHint.textContent = now ? '✅ 已开启：随 Windows 登录自动启动' : '已关闭（切换即生效）';
+      elAutoHint.style.color = now ? '#d0408a' : '';
+    } catch (e) {
+      elAutoHint.textContent = '设置失败：' + e.message;
+    }
+  });
+
   loadCfg();
   fillForm();
 })();

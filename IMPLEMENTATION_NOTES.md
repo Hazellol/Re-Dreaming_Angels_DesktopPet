@@ -114,7 +114,7 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
 
 | 日期 | 现象 | 根因 | 修法 | 验证 |
 |---|---|---|---|---|
-| （等待首发反馈） | | | | |
+| 2026-09 | **功能新增批**：开机自启 / 保持置顶开关 / 播放器导入歌曲 | —（新需求） | ①控制台「开机自启动」开关（`app.setLoginItemSettings`，开发模式附项目路径参数，切换即生效）；②右键菜单「📌 保持置顶」开/关（`win.setAlwaysOnTop(v,'floating')`，记忆 `QX_TOPMOST`，启动时应用）；③播放器「➕ 添加歌曲」：`dialog.showOpenDialog` 多选 → 复制到 `%APPDATA%\ReDreamingAngels\bgm`（打包版 assets 只读的统一用户目录）→ `rescanBgm()` 重扫（`listAudio` 合并内置+用户目录并去重；`readAudio` 双目录兜底；aac 支持） | 菜单置顶项截图 ✓；语法/运行零错误 ✓；导入对话框待手动点 ➕ 验证 |
 
 ---
 

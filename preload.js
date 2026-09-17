@@ -23,7 +23,13 @@ function imageToDataUrl(p) {
 }
 
 function audioToDataUrl(p) {
-  const abs = path.join(root, p);
+  // 内置 assets/bgm 优先；用户导入目录（%APPDATA%/ReDreamingAngels/bgm）兜底
+  const rel = String(p).replace(/^bgm\//, '');
+  let abs = path.join(root, p);
+  if (!fs.existsSync(abs)) {
+    const cand = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm', rel);
+    if (fs.existsSync(cand)) abs = cand;
+  }
   const buf = fs.readFileSync(abs);
   const head = buf.subarray(0, 12).toString('latin1');
   let mime = 'audio/mpeg';
@@ -31,18 +37,32 @@ function audioToDataUrl(p) {
   else if (head.startsWith('OggS')) mime = 'audio/ogg';
   else if (head.startsWith('fLaC')) mime = 'audio/flac';
   else if (head.startsWith('ftyp')) mime = 'audio/mp4';      // .m4a (MP4/AAC)
+  else if (head.charCodeAt(0) === 0x49 && head.charCodeAt(1) === 0x44 && head.charCodeAt(2) === 0x33) mime = 'audio/mpeg';   // ID3
+  else if (head.startsWith('ADIF') || head.startsWith('ADTS')) mime = 'audio/aac';
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
-// 扫描 assets/bgm/ 下的音频文件（用户可自行放入 mp3/wav/ogg/flac/m4a → 播放器自动收录）
-const AUDIO_EXTS = ['.mp3', '.wav', '.ogg', '.flac', '.m4a'];
+// 扫描音频：内置 assets/bgm/ + 用户导入目录 %APPDATA%/ReDreamingAngels/bgm（播放器"添加歌曲"导入到后者）
+const AUDIO_EXTS = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
+const userBgmDir = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+function isAudio(f) { return AUDIO_EXTS.some((e) => f.toLowerCase().endsWith(e)); }
 function listAudio() {
+  const out = [];
+  const seen = {};
   const dir = path.join(root, 'bgm');
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter((f) => /\.(mp3|wav|ogg|flac|m4a)$/i.test(f))
-    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    .map((f) => 'bgm/' + f);
+  if (fs.existsSync(dir)) {
+    for (const f of fs.readdirSync(dir).filter(isAudio).sort((a, b) => a.localeCompare(b, 'zh-CN'))) {
+      if (!seen[f]) { seen[f] = 1; out.push('bgm/' + f); }
+    }
+  }
+  try {
+    if (fs.existsSync(userBgmDir)) {
+      for (const f of fs.readdirSync(userBgmDir).filter(isAudio).sort((a, b) => a.localeCompare(b, 'zh-CN'))) {
+        if (!seen[f]) { seen[f] = 1; out.push('bgm/' + f); }
+      }
+    }
+  } catch (e) { /* noop */ }
+  return out;
 }
 
 // 聊天历史：存项目内 data/chat_<role>.json（下次打开接上对话）
@@ -91,6 +111,13 @@ contextBridge.exposeInMainWorld('deskpet', {
   // 剪贴板
   clipboardRead: () => ipcRenderer.invoke('clipboard-read'),
   clipboardWrite: (text) => ipcRenderer.invoke('clipboard-write', text),
+  // 系统开关：开机自启动 / 保持置顶
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (v) => ipcRenderer.invoke('set-auto-launch', v),
+  getTopmost: () => ipcRenderer.invoke('get-topmost'),
+  setTopmost: (v) => ipcRenderer.invoke('set-topmost', v),
+  // 播放器：导入歌曲（系统文件对话框 → 复制到用户歌曲目录）
+  importBgm: () => ipcRenderer.invoke('import-bgm'),
   aiChat: (payload) => ipcRenderer.invoke('ai-chat', payload),
   aiTest: (cfg) => ipcRenderer.invoke('ai-test', cfg),
   env: (k) => (process.env[k] || null),

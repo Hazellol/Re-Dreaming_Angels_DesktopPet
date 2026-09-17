@@ -700,7 +700,7 @@
     if (BGM_NAME_MAP[base]) return BGM_NAME_MAP[base];
     return base.replace(/\.[^.]+$/, '');
   }
-  const BGM_FILES = (() => {
+  let BGM_FILES = (() => {
     try {
       const l = dk.listAudio();
       l.sort((a, b) => {
@@ -712,7 +712,22 @@
     } catch (e) { /* noop */ }
     return ['audio/bgm_main.mp3'];   // 兜底
   })();
-  const BGM_NAMES = BGM_FILES.map(bgmDisplayName);
+  let BGM_NAMES = BGM_FILES.map(bgmDisplayName);
+  // 重新扫描歌曲（内置 assets/bgm + 用户导入目录；导入后调用）
+  function rescanBgm() {
+    try {
+      const l = dk.listAudio();
+      if (l && l.length) {
+        l.sort((a, b) => {
+          const ka = a.startsWith('bgm/') ? 0 : 1, kb = b.startsWith('bgm/') ? 0 : 1;
+          if (ka !== kb) return ka - kb;
+          return a.localeCompare(b, 'zh-CN');
+        });
+        BGM_FILES = l;
+        BGM_NAMES = BGM_FILES.map(bgmDisplayName);
+      }
+    } catch (e) { /* noop */ }
+  }
   const audioCfg = { master: 70, muted: false, sfxVol: 100, bgmVol: 60, bgmIdx: 0, bgmOn: false, playMode: 'order' };
   function loadAudioCfg() { S.loadAudioCfg(audioCfg, BGM_FILES.length); }
   function saveAudioCfg() { S.saveAudioCfg(audioCfg); }
@@ -1057,6 +1072,23 @@
     saveAudioCfg();
   });
   document.getElementById('mp-close').addEventListener('click', hideMusicPanel);
+  // 播放器：从文件夹添加歌曲（导入到用户歌曲目录 → 重扫列表 → 刷新面板）
+  document.getElementById('mp-import').addEventListener('click', async () => {
+    try {
+      const r = await dk.importBgm();
+      if (r && r.ok && r.added && r.added.length) {
+        rescanBgm();
+        audioCfg.bgmIdx = Math.min(audioCfg.bgmIdx, BGM_FILES.length - 1);
+        saveAudioCfg();
+        refreshMusicPanel();
+        mpTrack.insertAdjacentHTML('beforeend',
+          '<div class="mp-note" style="font-size:11px;color:#d0408a;padding:2px 8px;">✅ 已添加 ' + r.added.length + ' 首：' +
+          r.added.map((s) => String(s).replace(/</g, '')).slice(0, 3).join('、') + (r.added.length > 3 ? ' …' : '') + '</div>');
+      } else if (r && !r.canceled) {
+        mpTrack.insertAdjacentHTML('beforeend', '<div class="mp-note" style="font-size:11px;color:#c05050;padding:2px 8px;">未添加任何歌曲' + (r.error ? '（' + r.error + '）' : '') + '</div>');
+      }
+    } catch (e) { /* noop */ }
+  });
   makeDraggable(musicPanel, musicPanel.querySelector('.sp-head'));
 
   // ================= 互聊设置面板（右键菜单💬板块 ⚙设置；改即保存生效） =================
@@ -1192,9 +1224,14 @@
   const ctxSepRole = document.getElementById('cm-sep-role');
   let ctxRole = null;   // 命中角色；null=空白处（只显示通用项）
   const ctxGravityItem = document.getElementById('cm-gravity');
+  const ctxTopmostItem = document.getElementById('cm-topmost');
+  // 保持置顶最上层（窗口级开关；记忆到 localStorage，启动时应用）
+  let topmostOn = true;
+  try { topmostOn = localStorage.getItem('QX_TOPMOST') !== '0'; } catch (e) { /* noop */ }
   function refreshCtxMenu() {
     ctxLockItem.textContent = idolLocked ? '🔒 锁定（禁止拖动）' : '🔓 取消锁定（允许拖动）';
     ctxGravityItem.textContent = gravityOn ? '🌍 重力：开（落地+可甩飞）' : '🌍 重力：关（悬浮走动）';
+    if (ctxTopmostItem) ctxTopmostItem.textContent = topmostOn ? '📌 保持置顶：开' : '📌 保持置顶：关';
     const hasRole = !!ctxRole;
     ctxInteract.style.display = hasRole ? '' : 'none';
     ctxChat.style.display = hasRole ? '' : 'none';
@@ -1272,6 +1309,11 @@
     else if (act === 'lock') {
       idolLocked = !idolLocked;
       try { localStorage.setItem('QX_LOCK', idolLocked ? '1' : '0'); } catch (err) { /* noop */ }
+    }
+    else if (act === 'topmost') {
+      topmostOn = !topmostOn;
+      try { localStorage.setItem('QX_TOPMOST', topmostOn ? '1' : '0'); } catch (err) { /* noop */ }
+      dk.setTopmost(topmostOn);
     }
     else if (act === 'quit') dk.quit();
   });
@@ -2117,6 +2159,9 @@
 
     // 尺寸记忆（桌面版）
     S.loadScales(scales, ROLE_KEYS);
+
+    // 保持置顶（记忆应用；菜单可切换）
+    dk.setTopmost(topmostOn);
 
     // 初始站位（下沿分布：22% / 50% / 78%）
     resize();
