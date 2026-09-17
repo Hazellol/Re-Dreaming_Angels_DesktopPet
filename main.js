@@ -39,6 +39,11 @@ function toggleMainWindow() {
 // 用途：未置顶时被最大化窗口完全覆盖 → Windows 不会给被遮挡的下层窗口任何鼠标消息，
 // 悬停/右键物理上无法召回（穿透态收不到 mousemove 会死锁）；托盘点击 / 全局快捷键是可靠入口。
 let tempTopTimer = null;
+let activeHotkey = null;   // 实际注册成功的救援快捷键（候选降级后）
+function hotkeyLabel() {
+  if (!activeHotkey) return '';
+  return activeHotkey.replace('Control', 'Ctrl');
+}
 function bringPetToFrontTemporarily(ms) {
   if (!win || win.isDestroyed()) return;
   const wasTop = win.isAlwaysOnTop();
@@ -53,6 +58,38 @@ function bringPetToFrontTemporarily(ms) {
       try { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false, 'floating'); } catch (e) { /* noop */ }
     }, ms || 1800);
   }
+}
+
+// ===== 主进程鼠标轮询穿透裁决（核心健壮性机制）=====
+// 原理：screen.getCursorScreenPoint() 是系统级取全局鼠标位置（GetCursorPos），**不受窗口遮挡、
+// 不受其他进程 SetCapture 影响**；renderer 只负责周期性上报"可交互矩形"（角色 bbox + 打开的浮层）。
+// 每 ~70ms 裁决一次：鼠标在矩形内 → 关闭穿透（可交互）+ moveTop；否则开启穿透。
+// 相比"依赖 renderer mousemove"的方案：被覆盖/被截图工具接管后可自动恢复，不会永久卡死。
+let hitRects = [];              // [{x,y,w,h}] 窗口 client 坐标（CSS px）
+let hitForceInteractive = false; // 拖动/编辑等强制可交互
+let mousePollTimer = null;
+let mousePollInside = null;     // null=未初始化（首次必定下发）
+function startMousePoll() {
+  if (mousePollTimer) clearInterval(mousePollTimer);
+  mousePollTimer = setInterval(mousePollTick, 70);
+}
+function mousePollTick() {
+  if (!win || win.isDestroyed()) return;
+  let inside = hitForceInteractive;
+  if (!inside && hitRects.length) {
+    const p = screen.getCursorScreenPoint();   // 屏幕 DIP 坐标
+    const b = win.getBounds();
+    const cx = p.x - b.x, cy = p.y - b.y;      // → 窗口 client 坐标（1:1 CSS px）
+    for (const r of hitRects) {
+      if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) { inside = true; break; }
+    }
+  }
+  if (inside === mousePollInside) return;
+  mousePollInside = inside;
+  try {
+    win.setIgnoreMouseEvents(!inside, { forward: true });
+    if (inside) win.moveTop();   // 需要交互时顺带提到同层最顶（被覆盖场景可召回）
+  } catch (e) { /* noop */ }
 }
 
 function appIcon(size) {
@@ -94,8 +131,10 @@ function createWindow() {
   win.setFocusable(false);
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // 桌面版：默认整窗点击穿透（鼠标事件转发给 renderer，由 renderer 决定是否放行互动）
+  // 桌面版：默认整窗点击穿透；**穿透状态由主进程鼠标轮询统一裁决**（不依赖 renderer 的 mousemove——
+  // 被其他窗口覆盖/被 SetCapture（QQ 截图等）接管时窗口收不到鼠标消息会永久死锁，用户实测）
   win.setIgnoreMouseEvents(true, { forward: true });
+  startMousePoll();
 
   // 调试截图参数：electron . --screenshot [delayMs] ["anim0=动作_X&anim1=表情_Y"]
   const shotArg = process.argv.indexOf('--screenshot');
@@ -239,14 +278,35 @@ app.whenReady().then(() => {
     rebuildTrayMenu();
     tray.on('click', () => bringPetToFrontTemporarily(1800));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
   } catch (e) { console.error('tray init failed', e); }
-  // 全局快捷键：Ctrl+Alt+Z → 把三小只提到最前（未置顶被最大化窗口盖住时的救援入口）
-  try {
-    const hkOk = globalShortcut.register('Control+Alt+Z', () => bringPetToFrontTemporarily(1800));
-    console.log('[HOTKEY] Ctrl+Alt+Z registered =', hkOk);
-  } catch (e) { console.error('[HOTKEY] register failed', e); }
+  // 全局快捷键：把三小只提到最前（未置顶被覆盖/被截图工具接管时的救援入口）
+  // ⚠️ globalShortcut 需独占注册：被其他软件占用会返回 false → 依次尝试候选，成功即用并告知 UI
+  const HOTKEY_CANDIDATES = ['Control+Alt+Z', 'Control+Alt+D', 'Control+Alt+F9', 'Control+Shift+Alt+Z'];
+  activeHotkey = null;
+  for (const hk of HOTKEY_CANDIDATES) {
+    try {
+      if (globalShortcut.register(hk, () => bringPetToFrontTemporarily(1800))) { activeHotkey = hk; break; }
+    } catch (e) { /* try next */ }
+  }
+  console.log('[HOTKEY] active =', activeHotkey || '(none)');
+  if (tray) { try { tray.setToolTip('妄想天使桌宠（点击提到最前' + (activeHotkey ? ' · ' + hotkeyLabel() : '') + '）'); } catch (e) { /* noop */ } }
   // 调试：QX_FRONTTEST=1 → 启动 5s 后自动执行一次"提到最前"（验证被覆盖时的提层机制）
   if (process.env.QX_FRONTTEST === '1') {
     setTimeout(() => { console.log('[FRONTTEST] bring pet to front now'); bringPetToFrontTemporarily(8000); }, 5000);
+  }
+
+  // 调试：QX_AUTOLAUNCH_TEST=1 → 启动时验证"写入→读取"往返（排查开关打不上钩）
+  if (process.env.QX_AUTOLAUNCH_TEST === '1') {
+    setTimeout(() => {
+      try {
+        const opts = loginItemOpts();
+        const before = !!app.getLoginItemSettings(opts).openAtLogin;
+        app.setLoginItemSettings({ openAtLogin: true, path: opts.path, args: opts.args });
+        const afterOn = !!app.getLoginItemSettings(opts).openAtLogin;
+        app.setLoginItemSettings({ openAtLogin: false, path: opts.path, args: opts.args });
+        const afterOff = !!app.getLoginItemSettings(opts).openAtLogin;
+        console.log('[AUTOLAUNCH-TEST] before=', before, 'setTrue→', afterOn, 'setFalse→', afterOff);
+      } catch (e) { console.log('[AUTOLAUNCH-TEST] error', e.message); }
+    }, 1200);
   }
 
   ipcMain.on('quit', () => { app.isQuitting = true; app.quit(); });
@@ -261,21 +321,26 @@ app.whenReady().then(() => {
   // 剪贴板（聊天输入右键复制/粘贴/消息复制按钮用）
   ipcMain.handle('clipboard-read', () => clipboard.readText());
   ipcMain.handle('clipboard-write', (e, text) => { clipboard.writeText(String(text == null ? '' : text)); return true; });
+  // 实际生效的救援快捷键（供 UI 提示；未被占用时才有值）
+  ipcMain.handle('get-hotkey', () => hotkeyLabel());
 
   // ===== 系统类开关：开机自启动 / 保持置顶 =====
+  // ⚠️ Windows 上 getLoginItemSettings 必须与写入时使用**完全相同的 path+args** 才会返回 true，
+  //    否则出现"设置成功但开关打不上钩"（用户实测 bug）。
+  function loginItemOpts() {
+    return { path: process.execPath, args: app.isPackaged ? [] : [path.resolve(__dirname)] };
+  }
   ipcMain.handle('get-auto-launch', () => {
-    try { return !!app.getLoginItemSettings().openAtLogin; } catch (e) { return false; }
+    try { return !!app.getLoginItemSettings(loginItemOpts()).openAtLogin; } catch (e) { return false; }
   });
   ipcMain.handle('set-auto-launch', (e, v) => {
     try {
-      app.setLoginItemSettings({
-        openAtLogin: !!v,
-        path: process.execPath,
-        // 开发模式（未打包）需附带项目路径参数，打包版无需
-        args: app.isPackaged ? [] : [path.resolve(__dirname)]
-      });
-      return !!app.getLoginItemSettings().openAtLogin;
-    } catch (err) { return false; }
+      const opts = loginItemOpts();
+      app.setLoginItemSettings({ openAtLogin: !!v, path: opts.path, args: opts.args });
+      const now = !!app.getLoginItemSettings(opts).openAtLogin;
+      console.log('[AUTOLAUNCH] set', v, '→ now', now);
+      return now;
+    } catch (err) { console.error('[AUTOLAUNCH] failed', err); return false; }
   });
   ipcMain.handle('get-topmost', () => {
     try { return win && !win.isDestroyed() ? win.isAlwaysOnTop() : true; } catch (e) { return true; }
@@ -438,15 +503,16 @@ app.whenReady().then(() => {
   ipcMain.on('set-focusable', (e, v) => {
     if (win && !win.isDestroyed()) win.setFocusable(!!v);
   });
-  // 鼠标穿透切换：要交互（ignore=false）时**顺带把窗口提到同层最顶**——
-  // 否则"未置顶 + 被最大化窗口完全覆盖"时，窗口沉在下面且 setFocusable(false) 不会被点击激活，
-  // 导致能渲染菜单却点不到任何东西（用户实测 bug）。
+  // 鼠标穿透切换：**已由主进程轮询统一裁决**（见 mousePollTick）；此 IPC 保留作兼容/手动覆盖
   ipcMain.on('set-mouse-ignore', (e, ignore) => {
     if (!win || win.isDestroyed()) return;
     win.setIgnoreMouseEvents(!!ignore, { forward: true });
-    if (!ignore) {
-      try { win.moveTop(); } catch (err) { /* noop */ }
-    }
+  });
+  // renderer 上报"可交互矩形"（角色 bbox + 打开的浮层）→ 主进程轮询裁决穿透
+  ipcMain.on('hit-rects', (e, payload) => {
+    if (!payload) return;
+    hitRects = Array.isArray(payload.rects) ? payload.rects : [];
+    hitForceInteractive = !!payload.force;
   });
   // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
   ipcMain.on('move-top', () => {

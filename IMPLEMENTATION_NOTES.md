@@ -105,7 +105,12 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     - 放宽：`parseSceneReply` 不再强制"每人至少一句"（解析出 ≥1 行即演出）。
     - 新增 `[CHATTER]` 诊断日志（生成失败/API 失败/原始回复预览），排查互聊问题的第一入口。
 14. **南宫参与互聊总失败（用户实测）**：显示名与解析名不一致——`personaLabel` 优先用 `personas.json` 的 label（**南宫羽**），模型按 prompt 输出"南宫羽: 台词"，而 `parseChatterLine` 只认 core `ROLES.label`（**南宫**）→ **南宫的行永远被丢弃**（千夏×南宫场景常失败/只剩千夏单句）。修：`parseChatterLine(line, labelOf?)` 优先用 labelOf（与 prompt 同一套名字）+ 内置别名表（南宫/南宫羽）兜底；`parseSceneReply` 透传 labelOf。验证：单测"南宫羽:"行归位 ✓ + 真实 API 千夏×南宫 → 南宫记忆写入【和千夏的互聊片段】（参演铁证）✓。**教训：prompt 与解析器必须用同一"名字来源"，显示名变更要两端同步。**
-15. **未置顶时被最大化窗口完全覆盖 → 互动死锁（用户实测，两轮排查）**：Windows 机制——**被遮挡的区域不会给下层窗口任何鼠标消息**（`forward:true` 的 mousemove 同样收不到）→ 穿透态无法命中判定 → 无法切回可交互 → 菜单能画但点不到。`setFocusable(false)`（不抢焦点）又让点击无法像普通窗口那样激活浮起。**修复（三层）**：①交互路径提层——`set-mouse-ignore(false)` 与 renderer `bringToFront()` 均调用 `win.moveTop()`（不改变置顶开关语义）；②**保底召回入口**——**全局快捷键 `Ctrl+Alt+Z`**（`globalShortcut`，注册返回值日志确认 true）与**托盘图标点击/菜单「📌 把三小只提到最前」** → `bringPetToFrontTemporarily(1800)`（临时 `setAlwaysOnTop(true,'floating')` + `moveTop`，1.8s 后恢复用户设置；仍 `setFocusable(false)` 不抢焦点）；③菜单底部提示行告知用户救援键。**实测验证**（QX_NOTOP=1 + 全屏浏览器覆盖 + 底层 keybd_event 模拟 Ctrl+Alt+Z + 全屏截图）：救援前她不可见 → 按键后**三小只浮到覆盖窗口之上** ✓✓；`[FRONTTEST]` 自动提层同样验证 ✓。**结论：物理限制下"悬停召回"不可行，系统级入口（热键/托盘）是正解。**
+15. **未置顶时被最大化窗口完全覆盖 → 互动死锁（第一轮排查，权宜修复）**：`set-mouse-ignore(false)`/`bringToFront()` 加 `moveTop()` + 托盘/快捷键召回（`bringPetToFrontTemporarily`）。⚠️ 仅解决"召回"，**未解决根因**（见坑 16）。
+16. **穿透架构重构：从"renderer mousemove 判定"改为"主进程鼠标轮询裁决"（根治卡死）**：用户实测三类死锁同一病根——①被全屏窗口完全覆盖；②**QQ 截图（Ctrl+Alt+A）等 SetCapture 接管鼠标后**；③置顶提层后仍点不动。原因：旧方案 `setIgnoreMouseEvents(true,{forward:true})` + **renderer 收 mousemove 命中判定**；一旦窗口被遮挡/被其他进程捕获鼠标，**renderer 永远收不到 mousemove** → 停在"忽略鼠标"态 → 即使视觉可见/置顶，点击也全部穿透给下层 → 死锁（换置顶、加 moveTop 均无效）。
+    **新架构**：穿透状态由**主进程统一裁决**——`screen.getCursorScreenPoint()`（系统级 `GetCursorPos`，**不受遮挡、不受 SetCapture 影响**）每 70ms 取全局鼠标位置；renderer 只周期性上报"可交互矩形"（三只角色 bbox + 所有打开的浮层；拖动/编辑中标记 forceInteractive）；主进程命中则 `setIgnoreMouseEvents(false)` + `win.moveTop()`，否则 `setIgnoreMouseEvents(true,{forward:true})`（仅状态变化时下发）。
+    **配套**：①`hit-rects` IPC（renderer 每 150ms 及浮层显隐时上报）；②renderer 不再自行调用 setMouseIgnore（避免双源打架）；③救援快捷键**候选降级**（`Control+Alt+Z → Control+Alt+D → Control+Alt+F9`，被占用自动换下一个，实际生效键经 `get-hotkey` IPC 显示在菜单底部与托盘 tooltip）；④**开机自启读取 bug 修复**——`getLoginItemSettings` 必须传与写入**完全相同的 path+args**（Windows 匹配规则），否则"设置成功但开关打不上钩"。
+    **实测**（QX_NOTOP=1 + 全屏浏览器覆盖）：`[AUTOLAUNCH-TEST] before=true setTrue→true setFalse→false` ✓；`[HOTKEY] active=Control+Alt+D`（Ctrl+Alt+Z 被占用自动降级）✓；鼠标移到被覆盖的角色处 → **她自动浮到最前** ✓；覆盖状态下点击 → **互动气泡出现**（"助教！好像有正在夸我的评论诶…！"）✓✓。
+    **结论：桌宠的"是否可交互"绝不能依赖窗口自身收到的鼠标事件；系统级鼠标位置轮询是遮挡/捕获场景下唯一可靠的方案。**
 
 ---
 

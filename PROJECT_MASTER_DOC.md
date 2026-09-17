@@ -56,7 +56,7 @@ Electron
 | 渲染坐标 | 世界=屏幕 CSS 像素；`container {x,y}` 底部锚；y 向上；`worldToScreenPx(key,lx,ly)` 换算（scale/镜像已含） |
 | 姿态 | `state.setAnimation(0, '动作_X', true)` + `(1,'表情_Y',true)`；组合皮肤=默认+朝向(镜像) |
 | 命中 | bbox×scale 投影 + 6px pad；hidden/对话中角色各自排除 |
-| 穿透 | 每帧 `refreshMouseIgnore`：浮层矩形+命中角色 → `setIgnoreMouseEvents(!inside)`；焦点跟随（textarea 聚焦保持 `setFocusable(true)`，blur 时恢复——**编辑态例外**） |
+| 穿透 | **主进程鼠标轮询裁决**（坑 16）：renderer 每 150ms 上报可交互矩形（角色 bbox + 浮层，`hit-rects` IPC）→ 主进程每 70ms 用 `screen.getCursorScreenPoint()`（不受遮挡/SetCapture 影响）判定 → `setIgnoreMouseEvents(!inside)`，命中时 `moveTop()`。**不依赖 renderer 的 mousemove**（旧方案在覆盖/QQ 截图后会死锁）。焦点跟随（输入聚焦 `setFocusable(true)`，blur 恢复——编辑态例外） |
 | 置顶 | 点击浮层 → `bringToFront`（主窗 always-on-top + z-index 排序） |
 | 聊天冻结 | `chatFrozen[role]`：待机动画正常、**不走动/不自动冒泡/不姿势**；unfreeze 用独立 reset（不动气泡） |
 | 气泡 | `placePopover` 每帧：**上→右→左** 防出屏（pos-right/left 锚点+尾巴朝向+clamp 兜底）；打字机逐帧定位（边打边换位）；`bubbleIsChat` 拖动角色时保留 |

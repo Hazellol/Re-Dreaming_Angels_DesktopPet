@@ -804,10 +804,9 @@
   function bringToFront(elm) {
     frontZ += 1;
     elm.style.zIndex = String(frontZ);
-    // 窗口层级同步提起：未置顶时被上层窗口遮挡也能操作（配合 set-mouse-ignore 的 moveTop 双保险）
+    // 窗口层级同步提起（未置顶被覆盖时也能操作）；穿透状态交由主进程轮询裁决
     try { dk.moveTop(); } catch (e) { /* noop */ }
-    // 浮层要能点到：确保窗口此刻接收鼠标事件
-    try { dk.setMouseIgnore(false); } catch (e) { /* noop */ }
+    reportHitRects(true);   // 浮层矩形变化：立即上报，主进程下个轮询周期即可交互
   }
   function openPanelAt(elm, x, y) {
     bringToFront(elm);   // 打开即置顶
@@ -1327,6 +1326,18 @@
     if (item) playSfxFile(AUDIO_FILES.uiHover);
   });
   document.getElementById('cm-close').addEventListener('click', hideCtxMenu);
+  // 救援快捷键提示行：显示实际生效的键（候选降级后的真实值）
+  (async () => {
+    try {
+      const hk = await dk.getHotkey();
+      const el = document.getElementById('cm-hint');
+      if (el) {
+        el.textContent = hk
+          ? '💡 被窗口盖住时：' + hk + ' 或点托盘图标，把她提到最前'
+          : '💡 被窗口盖住时：点系统托盘图标，把她提到最前';
+      }
+    } catch (e) { /* noop */ }
+  })();
   makeDraggable(ctxMenu, ctxMenu.querySelector('.cm-head'));
   window.addEventListener('mousedown', (e) => {
     if (ctxMenu.style.display === 'none') return;
@@ -2067,11 +2078,42 @@
   scheduleChatterCheck();
   loadChatterCfg();   // 互聊配置（右键菜单"互聊"设置面板，改即保存生效）
 
-  // ================= 桌面版穿透 =================
+  // ================= 桌面版穿透（主进程轮询裁决）=================
+  // 设计：renderer 只负责"上报可交互矩形"，穿透状态由主进程用系统级鼠标位置轮询决定——
+  // 因为窗口被覆盖 / 被 QQ 截图等 SetCapture 接管时，renderer 收不到 mousemove 会永久死锁。
   let mouseOverUi = null;
-  let lastMouse = { x: -1, y: -1 };   // 最近一次鼠标位置（用于显隐事件后主动刷新穿透判定）
+  let lastMouse = { x: -1, y: -1 };   // 最近一次鼠标位置（窗口内事件的参考值）
+  let lastRectsJson = '';
+  function collectHitRects() {
+    const rects = [];
+    const push = (el) => {
+      if (!el || el.style.display === 'none') return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;
+      rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+    };
+    for (const key of ROLE_KEYS) {
+      if (idols[key] && !idols[key].hidden) {
+        const r = idolScreenRect(key);
+        rects.push({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+      }
+    }
+    for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel, inputCtx]) push(el);
+    if (dialog.open) push(dEl);
+    return rects;
+  }
+  function reportHitRects(force) {
+    const rects = collectHitRects();
+    const json = JSON.stringify(rects);
+    const forceInteractive = !!(drag.on || editMsgIndex != null);
+    if (!force && json === lastRectsJson && !forceInteractive) return;
+    lastRectsJson = json;
+    try { dk.sendHitRects(rects, forceInteractive); } catch (e) { /* noop */ }
+  }
+  setInterval(() => reportHitRects(false), 150);   // 角色走动/动画 → 矩形小幅变化，周期性上报
+  // 内部状态刷新（用于其它逻辑/hover 效果；穿透不再由这里下发）
   function refreshMouseIgnore() {
-    if (lastMouse.x < 0) return;
+    if (lastMouse.x < 0) { reportHitRects(true); return false; }
     let inside = false;
     for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel]) {
       if (!el || el.style.display === 'none') continue;
@@ -2085,16 +2127,14 @@
                lastMouse.y >= r.top - 4 && lastMouse.y <= r.bottom + 4;
     }
     if (!inside) inside = !!hitIdol(lastMouse.x, lastMouse.y);
-    if (inside !== mouseOverUi) {
-      mouseOverUi = inside;
-      dk.setMouseIgnore(!inside);
-    }
+    mouseOverUi = inside;
+    reportHitRects(true);   // 浮层显隐等状态变化：立即同步矩形给主进程
     return inside;
   }
   window.addEventListener('mousemove', (e) => {
     lastMouse.x = e.clientX;
     lastMouse.y = e.clientY;
-    refreshMouseIgnore();
+    mouseOverUi = null;   // 由主进程轮询裁决；这里只记录位置（hover 判定由 DOM 自行处理）
   });
 
   // ================= 主循环 =================
