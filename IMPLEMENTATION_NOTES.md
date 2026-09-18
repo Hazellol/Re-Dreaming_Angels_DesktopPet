@@ -283,6 +283,13 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
 4. **浮层阴影被裁成硬边**（"奇怪的阴影"）：区域边距 6px → **32px**（覆盖 CSS 阴影扩散）。
 - **可调常量**（`main.js`）：`REGION_PAD_IDLE = 32`、`REGION_PAD_DRAG = 170`；回退开关 `QX_NOREGION=1`。
 
+**K1 精度修复（第二轮·用户实测"对话动作被瞬间重置"）**：
+- **现象**：重力模式下，待机对话框的姿势动作**只闪现一瞬**就被打回普通待机呼吸。
+- **根因**：上一轮"落地恢复"的判据写成了"**只要当前动画不是『动作_待机』就 `clearIdolFace`**" —— 而重力下该分支**每帧都在执行**（`physWasBusy && !busy` 因 busy 抖动恒成立）→ 对话姿势刚播一帧就被打死。
+- **修法**：新增 `isPhysicalMotionAnim(key, name)`，**只有当前动画属于物理动作姿势（drag 被拎 / fly 飞行 / bounce 反弹）时**才在落地后恢复待机；对话、捏捏等主动姿势完全不受物理逻辑干扰。
+- **验证**：重力开 + 对话频繁（`QX_FREQ` dialogMode=always）→ 动画时间持续累加、`clearIdolFace` 调用次数 **仅 3 次**（不再是每帧）✓。
+- **边距调整（用户要求）**：`REGION_PAD_IDLE` 由 32px 统一放大到 **170px**（与拖动一致），彻底避免角色/气泡/阴影被窗口形状裁到。
+
 **✅ 已实施方案（比候选 1 更优）**：**Win32 `SetWindowRgn` 窗口形状收缩**
 - **原理**：保持窗口仍为全屏（渲染不受限），但把"真实存在的窗口区域"收缩为**角色 + 浮层的矩形并集** —— 形状之外**不参与命中也不参与合成** → 视频硬件叠加层（只在角色小块被影响）得以保留 → 不黑屏。
 - **实现**：引入 **koffi**（预编译 FFI，无需编译工具链）调用 `gdi32.CreateRectRgn/CombineRgn`（RGN_OR 并集）+ `user32.SetWindowRgn`；坐标 = `hitRects`（窗口 client CSS px）× `scaleFactor`（物理像素）+ 6px 边距；区域 key 去重避免重复设置；`SetWindowRgn(hwnd, NULL)` 用于清除。

@@ -659,6 +659,16 @@
     c.state.setAnimation(0, '动作_' + p[0], true);
     c.state.setAnimation(1, '表情_' + (p[1] || p[0]), true);
   }
+  // 当前动画是否属于"物理动作姿势"（被拎 drag / 飞行 fly / 反弹 bounce）
+  // 只有这些姿势在"落地停稳"时才应该被恢复成待机；对话/捏捏等主动姿势不受物理逻辑干扰。
+  function isPhysicalMotionAnim(key, name) {
+    if (!name) return false;
+    for (const phase of Object.keys(MOTION_POSES)) {
+      const p = MOTION_POSES[phase] && MOTION_POSES[phase][key];
+      if (p && ('动作_' + p[0]) === name) return true;
+    }
+    return false;
+  }
 
   // ================= 命中 / 拖动 =================
   function idolScreenRect(key) {
@@ -2459,12 +2469,14 @@
       if (gravityOn && !(drag.on && drag.key === key) && !c.walkTween) {
         const busy = idolPhysicallyBusy(key);
         if (c.physWasBusy && !busy) {
-          // ⚠️ 只在"当前不是待机动画"时才恢复待机：重力下角色会处于"下落→落地"的高频循环，
-          // busy 每帧抖动会让这里**每帧重置动画** → 待机呼吸动画周期性卡顿（用户实测 bug）。
-          // 已经是待机动画时无需重置（重置只会把 trackTime 打回 0）。
+          // 落地停稳 → 只恢复"物理姿势"（被拎/飞行/反弹）。
+          // ⚠️ 两个坑都在这里踩过：
+          //   ① 早期无条件 clearIdolFace → 重力下 busy 每帧抖动 → 动画每帧被重置（待机呼吸周期性停顿）
+          //   ② 改成"只要不是待机就重置" → 待机对话框的姿势动作刚播一帧就被打死（用户实测 bug）
+          // 正确判据：**当前动画必须属于物理动作姿势**才恢复。
           const tr = c.state && c.state.tracks[0];
           const curName = (tr && tr.animation) ? tr.animation.name : '';
-          if (curName !== '动作_待机') clearIdolFace(key);
+          if (isPhysicalMotionAnim(key, curName)) clearIdolFace(key);
         }
         c.physWasBusy = busy;
         stepGravity(key, dt);

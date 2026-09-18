@@ -339,8 +339,8 @@ function checkInputChannel(cx, cy) {
 // 边距（用户实测反馈）：
 //   · 浮层的 CSS 阴影会向外扩散 10~30px —— 边距太小会把阴影裁成硬边（"奇怪的阴影"+显示不全）
 //   · 拖动/快速移动时区域更新有延迟 —— 交互中额外用"光标周围大方块"兜住跟随路径
-const REGION_PAD_IDLE = 32;    // 平时边距（覆盖角色边缘 + 浮层阴影）
-const REGION_PAD_DRAG = 170;   // 交互（拖动/编辑）时边距，兜住快速移动
+const REGION_PAD_IDLE = 170;   // 平时边距（用户要求统一放大：彻底避免角色/气泡/阴影被裁）
+const REGION_PAD_DRAG = 170;   // 交互（拖动/编辑/物理运动）时边距，兜住快速移动
 let regionKey = '';
 let lastCursorForRegion = { x: -1, y: -1 };
 function applyWindowRegion(rects) {
