@@ -132,6 +132,7 @@ function hotkeyLabel() {
 // 相比"依赖 renderer mousemove"的方案：被覆盖/被截图工具接管后可自动恢复，不会永久卡死。
 let hitRects = [];              // [{x,y,w,h}] 窗口 client 坐标（CSS px）
 let hitForceInteractive = false; // 拖动/编辑等强制可交互
+let hitRectsMoving = false;      // 角色物理运动中（重力甩飞/下落）→ 区域边距放大 + 跟随更勤
 let hitForceSince = 0;           // force 起始时间（超时兜底：renderer 若卡住则不再永久置顶）
 let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
@@ -345,7 +346,7 @@ let lastCursorForRegion = { x: -1, y: -1 };
 function applyWindowRegion(rects) {
   if (!regionApi || !USE_REGION || !win || win.isDestroyed()) return;
   let list = (Array.isArray(rects) ? rects : []).slice();
-  const interacting = hitForceInteractive;
+  const interacting = hitForceInteractive || hitRectsMoving;   // 拖动/编辑/物理运动都算"快速变化"
   const pad = interacting ? REGION_PAD_DRAG : REGION_PAD_IDLE;
   // 交互中：把"光标周围的方块"并入区域 —— 角色拖动时跟随光标，位置上报有延迟，
   // 用光标邻域兜底可避免"拖动太快角色被窗口形状裁掉"（用户实测）。
@@ -947,6 +948,7 @@ app.whenReady().then(() => {
   ipcMain.on('hit-rects', (e, payload) => {
     if (!payload) return;
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
+    hitRectsMoving = !!payload.moving;   // 角色物理运动中（重力甩飞/下落）→ 区域用大边距
     applyWindowRegion(hitRects);   // 窗口形状 = 角色/浮层矩形并集（修 K1 视频黑屏：形状外不参与合成）
     const f = !!payload.force;
     if (f && !hitForceInteractive) hitForceSince = Date.now();

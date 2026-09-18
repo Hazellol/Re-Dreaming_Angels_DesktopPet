@@ -226,6 +226,7 @@
   }
   function clearIdolFace(key) {
     const c = idols[key];
+    if (dk.env('QX_ANIMLOG') === '1') console.log('[ANIMDBG] clearIdolFace(' + key + ') ' + new Error().stack.split('\n')[2]);
     if (clearFaceTimers[key]) { clearTimeout(clearFaceTimers[key]); clearFaceTimers[key] = null; }
     if (!c.state) { c.poseId = 0; return; }   // 资源已释放（隐藏优化）：安全兜底
     c.state.setAnimation(0, '动作_待机', true);
@@ -540,6 +541,7 @@
   function resetIdolIdleState(key) {
     const c = idols[key];
     if (!c) return;
+    if (dk.env('QX_ANIMLOG') === '1') console.log('[ANIMDBG] resetIdolIdleState(' + key + ') ' + new Error().stack.split('\n')[2]);
     if (c.walkTween) { c.walkTween = null; c.walking = false; }
     if (clearFaceTimers[key]) { clearTimeout(clearFaceTimers[key]); clearFaceTimers[key] = null; }
     if (bubbleLock && bubbleRole === key) {
@@ -2241,9 +2243,18 @@
         rects.push({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
       }
     }
-    for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel, inputCtx]) push(el);
+    // 浮层全部纳入窗口区域（漏掉任何一个都会被"窗口形状"裁掉）
+    // popover = 普通气泡（待机对话/互动台词）；用户实测担心"文本过多被裁" → 必须包含
+    for (const el of [popover, sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel, inputCtx]) push(el);
     if (dialog.open) push(dEl);
     return rects;
+  }
+  // 角色是否正在物理运动（重力/甩飞/下落）——用于让主进程扩大窗口区域边距并提高上报频率
+  function anyIdolPhysicallyMoving() {
+    return ROLE_KEYS.some((k) => {
+      const c = idols[k];
+      return c && !c.hidden && c.state && idolPhysicallyBusy(k);
+    });
   }
   let lastReportAt = 0;
   function reportHitRects(force) {
@@ -2263,14 +2274,17 @@
       (freqPanel && freqPanel.style.display !== 'none') ||
       (chatterPanel && chatterPanel.style.display !== 'none');
     const forceInteractive = !!(drag.on || editMsgIndex != null || modalOpen);
-    if (!force && json === lastRectsJson && !forceInteractive) return;
+    const moving = anyIdolPhysicallyMoving();
+    if (!force && json === lastRectsJson && !forceInteractive && !moving) return;
     lastRectsJson = json;
-    try { dk.sendHitRects(rects, forceInteractive, mouseEventCount); } catch (e) { /* noop */ }
+    try { dk.sendHitRects(rects, forceInteractive, mouseEventCount, moving); } catch (e) { /* noop */ }
   }
   setInterval(() => reportHitRects(false), 150);   // 角色走动/动画 → 矩形小幅变化，周期性上报
-  // 拖动/编辑中把上报频率提到 ~50ms：窗口"形状"跟随角色位置，上报太慢会让
-  // 角色跑出形状被裁掉（用户实测"拖动太快显示不全"）。
-  setInterval(() => { if (drag.on || editMsgIndex != null) reportHitRects(false); }, 50);
+  // 拖动/编辑/物理运动（重力甩飞/下落）中把上报频率提到 ~50ms：
+  // 窗口"形状"跟随位置，上报太慢会让角色跑出形状被裁掉（用户实测"甩飞/下落显示不全"）。
+  setInterval(() => {
+    if (drag.on || editMsgIndex != null || anyIdolPhysicallyMoving()) reportHitRects(false);
+  }, 50);
   // 内部状态刷新（用于其它逻辑/hover 效果；穿透不再由这里下发）
   function refreshMouseIgnore() {
     if (lastMouse.x < 0) { reportHitRects(true); return false; }
@@ -2444,7 +2458,14 @@
       // 重力物理步进（拖动中的角色跳过，跟随光标；走路中跳过——走动即贴地移动，避免与物理拉扯打架）
       if (gravityOn && !(drag.on && drag.key === key) && !c.walkTween) {
         const busy = idolPhysicallyBusy(key);
-        if (c.physWasBusy && !busy) clearIdolFace(key);   // 落地停稳：恢复正常待机
+        if (c.physWasBusy && !busy) {
+          // ⚠️ 只在"当前不是待机动画"时才恢复待机：重力下角色会处于"下落→落地"的高频循环，
+          // busy 每帧抖动会让这里**每帧重置动画** → 待机呼吸动画周期性卡顿（用户实测 bug）。
+          // 已经是待机动画时无需重置（重置只会把 trackTime 打回 0）。
+          const tr = c.state && c.state.tracks[0];
+          const curName = (tr && tr.animation) ? tr.animation.name : '';
+          if (curName !== '动作_待机') clearIdolFace(key);
+        }
         c.physWasBusy = busy;
         stepGravity(key, dt);
       }
@@ -2559,6 +2580,17 @@
     }, 800);
 
     // debug 入口
+    if (dk.env('QX_ANIMLOG') === '1') {
+      // 动画时间探针：每秒打印三只的动画时间 + 渲染帧数（诊断"待机动画周期性停顿"）
+      setInterval(() => {
+        const parts = ROLE_KEYS.map((k) => {
+          const c = idols[k];
+          const t = (c.state && c.state.tracks[0]) ? c.state.tracks[0].trackTime.toFixed(2) : '-';
+          return k + '=' + t;
+        });
+        console.log('[ANIM] f=' + frameCount + ' ' + parts.join(' '));
+      }, 1000);
+    }
     if (dk.env('QX_MEMTEST') === '1') {
       // 内存实验：反复"隐藏全部 → 显示全部"，用于区分"真泄漏"与"内存池不归还 OS"
       let step = 0;
