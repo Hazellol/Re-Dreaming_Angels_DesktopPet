@@ -2593,12 +2593,16 @@
 
     // debug 入口
     if (dk.env('QX_ANIMLOG') === '1') {
-      // 动画时间探针：每秒打印三只的动画时间 + 渲染帧数（诊断"待机动画周期性停顿"）
+      // 动画探针：每秒打印【当前动画名 @ 动画时间 (姿势ID)】+ 渲染帧数。
+      // 用途：诊断"姿势被瞬间重置 / 动画停摆"等问题——看动画名何时切换、每段持续多久。
       setInterval(() => {
         const parts = ROLE_KEYS.map((k) => {
           const c = idols[k];
-          const t = (c.state && c.state.tracks[0]) ? c.state.tracks[0].trackTime.toFixed(2) : '-';
-          return k + '=' + t;
+          const tr = c.state && c.state.tracks[0];
+          const nm = (tr && tr.animation) ? String(tr.animation.name).replace('动作_', '').replace('表情_', '') : '-';
+          const t = tr ? tr.trackTime.toFixed(1) : '-';
+          const short = k === 'airui' ? 'ar' : (k === 'qianxia' ? 'qx' : 'ng');
+          return short + '=' + nm + '@' + t + '(p' + c.poseId + ')';
         });
         console.log('[ANIM] f=' + frameCount + ' ' + parts.join(' '));
       }, 1000);
