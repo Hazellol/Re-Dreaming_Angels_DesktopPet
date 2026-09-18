@@ -2239,7 +2239,7 @@
   const hud = document.createElement('div');
   hud.id = 'hud';
   hud.style.cssText = 'position:fixed;left:8px;top:8px;color:#000;background:rgba(255,255,255,.92);font:12px monospace;padding:4px 8px;z-index:99;white-space:pre;';
-  if (!new URLSearchParams(location.search).has('hud')) hud.style.display = 'none';
+  if (!new URLSearchParams(location.search).has('hud') && dk.env('QX_HUD') !== '1') hud.style.display = 'none';
   document.body.appendChild(hud);
   function updateHud() {
     const lines = ['f=' + frameCount + ' mode=' + freq.dialogMode + ' view=' + viewW + 'x' + viewH + '@' + dpr + ' grav=' + gravityOn];
@@ -2253,9 +2253,6 @@
   }
   function frame(now) {
     if (renderPaused) return;   // 被完全覆盖：停止 rAF 链（渲染完全暂停，CPU 接近 0）
-    const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
-    lastTime = now;
-    frameCount++;
     // 拖动状态超时兜底：拖动中若 2.5s 内没有任何鼠标移动更新（mouseup 被截图工具等吞掉的特征）
     // → 中止拖动，避免 drag.on 卡死导致所有点击失效
     if (drag.on && drag.lastMoveAt && (now - drag.lastMoveAt) > 2500) abortDrag();
@@ -2271,13 +2268,19 @@
         return !!c.walkTween || c.poseId !== 0 || idolPhysicallyBusy(k);
       });
     // ===== 帧率限制（用户设置的"最大帧率"，默认 60；空闲时自动降到 ~24fps）=====
+    // ⚠️ 关键：跳过的帧必须把时间累积到下次渲染的 dt 里——所以 dt 用"距上次**实际渲染**的时间"，
+    // 且 lastTime 只在真正渲染这一帧时才更新（早期版本在函数开头更新 lastTime，导致跳帧时间被吞掉，
+    // 动画播放变慢成"慢动作"——用户实测 bug）。
     const activeMinMs = 1000 / maxFps;
     const idleMinMs = Math.max(activeMinMs, 1000 / 24);
     if ((now - lastRenderAt) < (idleNow ? idleMinMs : activeMinMs)) {
       requestAnimationFrame(frame);
       return;
     }
+    const dt = Math.min(0.05, (now - lastRenderAt) / 1000 || 0.016);
     lastRenderAt = now;
+    lastTime = now;
+    frameCount++;   // 只统计"真正渲染"的帧（HUD 的 f 值即为渲染帧数）
 
     // 每帧先透明清屏：全部角色隐藏/无绘制时，表面必须立即变透明（否则最后一只的
     // 画面会"卡"在桌面上——WebGL 无 draw 时合成器不重绘，残留最后一个绘制帧）

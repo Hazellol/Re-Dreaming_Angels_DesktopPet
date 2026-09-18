@@ -181,6 +181,10 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
        - **踩坑记录**：①"鼠标在她们区域内就解除暂停"是错的——被覆盖时鼠标坐标同样落在其矩形上（视觉不可见），会导致"刚暂停就恢复"；已删除，恢复只走遮挡检测。②`cover_window.ps1` 默认仅保持 3s，测试时需 `-HoldMs` 拉长才能观察到暂停效果。
     **实测**（QX_NOTOP=1 + 全屏覆盖窗口 22s）：日志 `[OCC-DBG] hwnd=… → OCCLUDED=1` → `[OCCLUSION] fully covered → pause rendering` → 暂停期间 **CPU 增量 2.56s/10s**（对照未暂停 **4.0~4.7s**，**降约 40%**；剩余为 Chromium 基础开销与遮挡检测本身）→ 覆盖结束后 `[OCCLUSION] visible → resume rendering` ✓。
     **进一步可省**（未做）：暂停期间把鼠标轮询 70→200ms、rects 上报 150→1000ms（可再降一部分常驻开销）。
+25. **修复帧率节流引入的两个 bug（用户实测）**：
+    1. **"三小只变慢动作"**：帧率节流（含空闲降帧）时，`lastTime` 在函数开头被无条件更新 → **被跳过的帧时间没有累积进 `dt`** → 渲染帧的 dt 只有单帧间隔（~16.7ms）→ 降到 24fps 时动画实际推进仅 **0.4 秒/秒（慢 2.5 倍）**。修：**`dt = now - lastRenderAt`（距上次实际渲染的时间）**，且 `lastTime` 只在真正渲染时更新；`frameCount` 也改为只统计实际渲染帧（HUD 的 f 值即真实 fps）。**实测**：HUD f=400→740（6 秒 340 帧 ≈ 56.7fps，限额 60 生效 ✓）。
+    2. **"取消保持置顶后三小只静止不动"**：遮挡检测**误判**——脚本把"全屏可见窗口"一律当遮挡物，而系统里存在 **NVIDIA Overlay**（全屏、`WS_EX_LAYERED|TRANSPARENT|TOOLWINDOW`，视觉上完全透明的覆盖层）→ 判定"被完全覆盖"→ 暂停渲染 → 她们静止。修：候选遮挡物必须**是真正会挡视线的普通应用窗口**——排除 `WS_EX_LAYERED`(0x80000) / `WS_EX_TRANSPARENT`(0x20) / `WS_EX_TOOLWINDOW`(0x80) / `WS_EX_NOACTIVATE`(0x8000000)，并用类名排除 `Progman/WorkerW/Shell_TrayWnd/Shell_SecondaryTrayWnd/SysShadow/Windows.UI.Core.CoreWindow/*Overlay*`。**实测**：无覆盖时 `[OCC-DBG] … → OCCLUDED=0`（不再误判）✓。
+    3. **HUD 调试开关**：新增 `QX_HUD=1` 环境变量（原先只能用 URL query `hud=1`），便于真机排查。
 
 ---
 
