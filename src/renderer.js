@@ -2271,7 +2271,9 @@
     // ⚠️ 关键：跳过的帧必须把时间累积到下次渲染的 dt 里——所以 dt 用"距上次**实际渲染**的时间"，
     // 且 lastTime 只在真正渲染这一帧时才更新（早期版本在函数开头更新 lastTime，导致跳帧时间被吞掉，
     // 动画播放变慢成"慢动作"——用户实测 bug）。
-    const activeMinMs = 1000 / maxFps;
+    // QX_NOFPS=1（调试）→ 跳过用户帧率上限，用于对比"限帧 vs 不限帧"的占用差异。
+    const noFpsLimit = dk.env('QX_NOFPS') === '1';
+    const activeMinMs = noFpsLimit ? 0 : (1000 / maxFps);
     const idleMinMs = Math.max(activeMinMs, 1000 / 24);
     if ((now - lastRenderAt) < (idleNow ? idleMinMs : activeMinMs)) {
       requestAnimationFrame(frame);

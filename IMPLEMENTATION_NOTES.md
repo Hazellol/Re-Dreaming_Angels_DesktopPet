@@ -185,6 +185,10 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     1. **"三小只变慢动作"**：帧率节流（含空闲降帧）时，`lastTime` 在函数开头被无条件更新 → **被跳过的帧时间没有累积进 `dt`** → 渲染帧的 dt 只有单帧间隔（~16.7ms）→ 降到 24fps 时动画实际推进仅 **0.4 秒/秒（慢 2.5 倍）**。修：**`dt = now - lastRenderAt`（距上次实际渲染的时间）**，且 `lastTime` 只在真正渲染时更新；`frameCount` 也改为只统计实际渲染帧（HUD 的 f 值即真实 fps）。**实测**：HUD f=400→740（6 秒 340 帧 ≈ 56.7fps，限额 60 生效 ✓）。
     2. **"取消保持置顶后三小只静止不动"**：遮挡检测**误判**——脚本把"全屏可见窗口"一律当遮挡物，而系统里存在 **NVIDIA Overlay**（全屏、`WS_EX_LAYERED|TRANSPARENT|TOOLWINDOW`，视觉上完全透明的覆盖层）→ 判定"被完全覆盖"→ 暂停渲染 → 她们静止。修：候选遮挡物必须**是真正会挡视线的普通应用窗口**——排除 `WS_EX_LAYERED`(0x80000) / `WS_EX_TRANSPARENT`(0x20) / `WS_EX_TOOLWINDOW`(0x80) / `WS_EX_NOACTIVATE`(0x8000000)，并用类名排除 `Progman/WorkerW/Shell_TrayWnd/Shell_SecondaryTrayWnd/SysShadow/Windows.UI.Core.CoreWindow/*Overlay*`。**实测**：无覆盖时 `[OCC-DBG] … → OCCLUDED=0`（不再误判）✓。
     3. **HUD 调试开关**：新增 `QX_HUD=1` 环境变量（原先只能用 URL query `hud=1`），便于真机排查。
+26. **修复"桌宠突然重置"/"后台冒出启动音"/"召回后卡顿"（用户实测批）**：
+    1. **"像重新打开了一次桌宠"（突然重置 + 后台冒启动音 + 位置回到初始）**：真凶是**输入通道自愈的 L3 `win.webContents.reload()`** —— 重载页面 = 重新初始化：**重放启动音**、角色回默认站位、聊天关闭。**已彻底移除 reload**（L3 改为只做窗口层级/样式的轻量刷新，绝不丢状态）。
+    2. **"后台用快捷键显示她们后会卡住一会儿才活动"**：她们被判定"完全覆盖"已暂停渲染，而恢复只能等下一轮遮挡检测（≤3s）。修：**所有主动交互立即解除暂停** —— `showOnTopOnce()`（快捷键/托盘/托盘菜单）与 `move-top` IPC（任何浮层打开：菜单/面板/聊天）都先 `setOccluded(false)`。**实测**：覆盖中按 Ctrl+Alt+Z → 日志 2 秒内出现 `[OCCLUSION] visible → resume rendering`（不再等检测周期）✓。
+    3. **帧率限制是否值得保留（用户要求实测）**：同一场景 12 秒 CPU 增量 —— **限帧 60：3.28s** vs **不限帧：4.75s**（**差 45%**）→ **帧率限制效果显著，建议保留**（默认 60 已满足用户"设置在 60 就行"的要求）；`QX_NOFPS=1` 可临时跳过限帧用于对比。
 
 ---
 

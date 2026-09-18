@@ -107,6 +107,8 @@ function showOnTopOnce(ms) {
   if (idolsAllHidden) {
     try { setIdolsShown(true); } catch (e) { /* noop */ }
   }
+  // 用户主动召回 → 立即解除"被覆盖暂停渲染"，否则她们会卡住等到下一轮遮挡检测（用户实测"不丝滑"）
+  try { setOccluded(false); } catch (e) { /* noop */ }
   try {
     win.setAlwaysOnTop(true, 'floating');
     win.moveTop();
@@ -263,12 +265,15 @@ function checkInputChannel(cx, cy) {
         } catch (e) { /* noop */ }
       }, 120);
     } else {
-      // L3：兜底——重载渲染进程（会重置角色位置/关闭聊天）；每会话最多 3 次
-      if (reloadCount < 3) {
-        reloadCount++;
-        console.log('[SELFHEAL] L3 reload webContents (' + reloadCount + '/3)');
-        win.webContents.reload();
-      }
+      // L3（已移除 reload）：**绝不能重载渲染进程**——`webContents.reload()` 会让页面重新初始化：
+      // 播放启动音、角色回到初始站位、聊天关闭，用户感受就是"桌宠突然重置了"（用户实测反馈）。
+      // 改为：只刷新窗口层级/样式（等同 L2 的轻量版），不做任何会丢状态的操作。
+      try {
+        if (win && !win.isDestroyed()) {
+          win.setAlwaysOnTop(userTopmost, 'floating');
+          win.moveTop();
+        }
+      } catch (e) { /* noop */ }
     }
   } catch (e) { /* noop */ }
 }
@@ -811,8 +816,11 @@ app.whenReady().then(() => {
     if (ec !== lastEvtCount) { lastEvtCount = ec; lastEvtChangeAt = Date.now(); }
   });
   // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
+  // 用户主动操作用户界面 → 立即解除"被覆盖暂停渲染"，保证交互即时响应
   ipcMain.on('move-top', () => {
-    if (win && !win.isDestroyed()) { try { win.moveTop(); } catch (e) { /* noop */ } }
+    if (!win || win.isDestroyed()) return;
+    try { setOccluded(false); } catch (e) { /* noop */ }
+    try { win.moveTop(); } catch (e) { /* noop */ }
   });
   ipcMain.on('context-menu', () => { /* 菜单已迁移为 renderer DOM 菜单 */ });
 
