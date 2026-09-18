@@ -112,6 +112,11 @@ let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
 let mousePollTicks = 0;
 let mousePollLastAt = 0;   // 上次轮询时间（暂停渲染时降频用）
+// 穿透状态去抖（减少 WS_EX_TRANSPARENT 切换次数 → 减少对 DWM/视频叠加层的扰动）
+let leaveTimer = null;
+let lastIgnoreApplied = null;   // null=未知 / false=可交互 / true=穿透
+const DIAG_NOPASS = process.env.QX_NOPASS === '1';
+const DIAG_ALWAYSPASS = process.env.QX_ALWAYSPASS === '1';
 const POLL_LOG = process.env.QX_POLLLOG === '1';
 
 // ===== 交互时"临时置顶"（根治未置顶时的点击死锁）=====
@@ -304,12 +309,33 @@ function checkInputChannel(cx, cy) {
 }
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
+  // 调试开关（用于二分定位"视频黑屏"是否由穿透状态切换引起）：
+  //   QX_NOPASS=1    → 永不穿透（窗口始终可交互；会挡住下层点击，仅用于诊断）
+  //   QX_ALWAYSPASS=1 → 永远穿透（不接收鼠标；同样仅用于诊断）
+  if (DIAG_NOPASS) { try { win.setIgnoreMouseEvents(false, { forward: true }); } catch (e) { /* noop */ } return; }
+  if (DIAG_ALWAYSPASS) { try { win.setIgnoreMouseEvents(true, { forward: true }); } catch (e) { /* noop */ } return; }
   try {
-    // 周期性重应用（resync）：**只重发目标值**，不再做"反向再切回"的强制 toggle。
-    // 原因（用户实测 bug）：频繁切换窗口的 WS_EX_TRANSPARENT 会让 DWM 反复重排合成路径，
-    // 从而破坏其它程序正在播放视频的硬件叠加层（视频黑屏）。反向 toggle 的收益（修复极端漂移）
-    // 已由"禁用遮挡检测"覆盖，因此改为最小扰动策略。
-    win.setIgnoreMouseEvents(!inside, { forward: true });
+    // ⚠️ 去抖策略（用户实测：光标经过/交互时，正在播放的视频会黑屏——穿透状态频繁切换会
+    // 让 DWM 反复重排合成路径，破坏其它程序的视频硬件叠加层）：
+    //   · 进入可交互区域 → 立即切换（交互要跟手）
+    //   · 离开可交互区域 → 延迟 500ms 再恢复穿透（避免贴着边缘来回抖动导致反复切换）
+    if (inside) {
+      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+      if (lastIgnoreApplied !== false) {
+        win.setIgnoreMouseEvents(false, { forward: true });
+        lastIgnoreApplied = false;
+      }
+    } else {
+      if (lastIgnoreApplied === true) return;         // 已经是穿透态：无需重复设置
+      if (leaveTimer) return;                          // 已有延迟任务
+      leaveTimer = setTimeout(() => {
+        leaveTimer = null;
+        if (mousePollInside) return;                   // 期间又回到可交互区域 → 取消
+        try {
+          if (win && !win.isDestroyed()) { win.setIgnoreMouseEvents(true, { forward: true }); lastIgnoreApplied = true; }
+        } catch (e) { /* noop */ }
+      }, 500);
+    }
     // ⚠️ 这里**刻意不做"悬停临时置顶"**：关闭"保持置顶"的语义就是"不抢层级、可以被别的窗口盖住"。
     // 早期为了修"被覆盖无法点击"曾在此处 setInterimTop(true)，副作用是"鼠标一经路过她们就自动浮出、
     // 用户聚焦别的窗口时她们也不被覆盖"（用户实测反馈）。现在改为：只有**用户主动救援**
