@@ -218,6 +218,13 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
        - **"用过隐藏后 546~590MB" 的构成**：①**控制台进程 ~68MB**（用户操作时才会创建；现已可 ✕ 关闭）；②**显示态 GPU 合成全屏透明窗口**（GPU 进程 ~230-270MB）；③**Chromium 内存池不立即把 RSS 归还 OS**（任务管理器只看 RSS，释放动作仍真实生效——隐藏/显示差值 76~87MB 可证）。
        - **优化确实生效**：三只全部隐藏 ≈ **省 77MB**（RSS），且**真实可用内存**远低于任务管理器显示值。
        - **增强**：`--js-flags=--max-old-space-size=256 --expose-gc` + 释放后主动 `window.gc()` → 隐藏态再降 **10~15MB**（573MB vs 583~590MB），无副作用（无 `GLOBAL_ERROR`）。
+31. **"三只全隐藏 → 也暂停渲染"（用户追问带来的优化）**：
+    **用户疑问**：为什么"控制台隐藏三只"(377MB) 比"被全屏窗口挡住"(329MB) 还高？——**直觉正确**：
+    - "被挡住"时我们**暂停了整个渲染**（帧循环停 + GPU 合成停）→ 最省；
+    - "隐藏三只"只**释放了她们的资源**（≈90MB，确实生效：显示态 ~470MB − 90MB ≈ 377MB ✓），但**窗口仍在跑帧循环 + GPU 持续合成全屏透明窗口** → 所以偏高。
+    **修复**：渲染暂停统一为两个来源 —— `pausedOccluded`（被覆盖）与 **`pausedAllHidden`（三只全隐藏且无浮层）**，由 `syncRenderPause()` 统一管理；暂停期间用 300ms 轻量轮询检查恢复条件，并在**显示角色 / 打开浮层**时通过 `wakeFromHiddenPause()` 立即恢复。
+    **同时修掉两个隐藏 bug**：①`isAnyOverlayOpen()` 原用 `style.display !== 'none'` 判断，而未打开的元素 `display` 是**空字符串** → 恒判"有浮层" → **全隐藏暂停永不触发**；改用 `offsetWidth/offsetHeight > 0`（真有尺寸）。②显示角色时若资源已释放，恢复期间 `hidden` 仍为 true → 出现"resumed 后立刻又 paused"的多余抖动；改为**进入显示分支立即 `c.hidden = false`**（帧循环用 `!c.state` 跳过尚未恢复的她），并把"无 state"的角色排除出命中矩形。
+    **实测**：`QX_IDOLSHIDE=1` → 日志 `[RENDER] paused (all idols hidden)` + 三只 `[RELEASE] freed assets` ✓，内存 **613MB → 528.7MB（-84MB）**；`QX_MEMTEST=1` 循环验证 `paused → freed ×3 → resumed → restored ×3` **干净交替、无多余暂停、无 GLOBAL_ERROR** ✓。
 
 ---
 

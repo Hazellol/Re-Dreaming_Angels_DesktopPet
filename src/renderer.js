@@ -615,18 +615,18 @@
     if (!c) return;
     if (on) {
       cancelReleaseIdol(key);
+      c.hidden = false;   // 立即标记可见（资源恢复期间帧循环用 !c.state 跳过她，不会崩）
+      try { wakeFromHiddenPause(); } catch (e) { /* noop */ }
       if (!c.data) {
-        // 资源已被释放：异步恢复 → 完成后再显示（恢复期间保持 hidden，避免访问空 state）
+        // 资源已被释放：异步恢复（完成后再刷新朝向/待机；期间帧循环跳过她）
         restoreIdolAssets(key).then((ok) => {
           if (!ok) return;
-          c.hidden = false;
           resetIdolIdleState(key);
           refreshMouseIgnore();
         });
         dk.sendHitRects(collectHitRects(), false, mouseEventCount);   // 立即同步一次命中矩形
         return;
       }
-      c.hidden = false;
     } else {
       c.hidden = true;
     }
@@ -925,6 +925,7 @@
     elm.style.zIndex = String(frontZ);
     // 窗口层级同步提起（未置顶被覆盖时也能操作）；穿透状态交由主进程轮询裁决
     try { dk.moveTop(); } catch (e) { /* noop */ }
+    try { wakeFromHiddenPause(); } catch (e) { /* noop */ }   // 打开浮层 → 立即恢复渲染（全隐藏暂停态）
     reportHitRects(true);   // 浮层矩形变化：立即上报，主进程下个轮询周期即可交互
   }
   function openPanelAt(elm, x, y) {
@@ -2234,7 +2235,8 @@
       rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
     };
     for (const key of ROLE_KEYS) {
-      if (idols[key] && !idols[key].hidden) {
+      // 资源已释放（!state）期间不参与命中判定——她还没恢复出来，避免点到"看不见的她"
+      if (idols[key] && !idols[key].hidden && idols[key].state) {
         const r = idolScreenRect(key);
         rects.push({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
       }
@@ -2305,25 +2307,57 @@
       console.log('[RENDER] max fps →', maxFps);
     });
   } catch (e) { /* noop */ }
-  // 被其它窗口完全覆盖 → 暂停渲染（主进程遮挡检测；鼠标靠近她们时会立即恢复）
+  // ===== 渲染暂停（两个来源，统一管理）=====
+  //  · occluded：被其它窗口完全覆盖（主进程遮挡检测）
+  //  · allHidden：三只全部隐藏且无浮层（用户实测："隐藏全部"应比"被覆盖"更省——
+  //    因为那时窗口仍在跑帧循环+GPU 合成，白白占用；现在也一并停下）
   let renderPaused = false;
+  let pausedOccluded = false;
+  let pausedAllHidden = false;
+  let resumeTimer = null;
+  function syncRenderPause() {
+    const shouldPause = pausedOccluded || pausedAllHidden;
+    if (shouldPause && !renderPaused) {
+      renderPaused = true;
+      console.log('[RENDER] paused (' + (pausedOccluded ? 'covered' : 'all idols hidden') + ')');
+      if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
+      // 暂停期间轻量轮询"隐藏态是否该恢复"（有角色显示 / 打开浮层 / 气泡 / 对话框 / 互聊）——
+      // 300ms 一次，开销极低；覆盖态的恢复由主进程 occluded IPC 负责。
+      resumeTimer = setInterval(() => {
+        if (pausedAllHidden && !shouldPauseByHidden()) { pausedAllHidden = false; syncRenderPause(); }
+      }, 300);
+    } else if (!shouldPause && renderPaused) {
+      renderPaused = false;
+      if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
+      lastTime = 0;                        // 重置计时，避免恢复瞬间 dt 过大
+      console.log('[RENDER] resumed');
+      requestAnimationFrame(frameSafe);
+    }
+  }
+  function shouldPauseByHidden() {
+    return ROLE_KEYS.every((k) => idols[k].hidden) && !isAnyOverlayOpen() && !bubbleLock && !dialog.open && !chatter.active;
+  }
+  // 主动解除"全隐藏暂停"（显示角色 / 打开浮层时立即调用，比轮询更跟手）
+  function wakeFromHiddenPause() {
+    if (!pausedAllHidden) return;
+    pausedAllHidden = false;
+    syncRenderPause();
+  }
+  // 被其它窗口完全覆盖 → 暂停渲染（主进程遮挡检测；主动交互会立即恢复）
   try {
     dk.onOccluded((occ) => {
-      if (occ && !renderPaused) {
-        renderPaused = true;
-        console.log('[RENDER] paused (fully covered by another window)');
-      } else if (!occ && renderPaused) {
-        renderPaused = false;
-        lastTime = 0;                        // 重置计时，避免恢复瞬间 dt 过大
-        console.log('[RENDER] resumed');
-        requestAnimationFrame(frameSafe);
-      }
+      pausedOccluded = occ;
+      syncRenderPause();
     });
   } catch (e) { /* noop */ }
-  // 是否有任何浮层打开（空闲降帧判断用）
+  // 是否有任何浮层打开（空闲降帧 / 全隐藏暂停判断用）
+  // ⚠️ 不能用 `style.display !== 'none'`：未打开的元素 display 是空字符串（''），会被误判为"已打开"
+  //    → 导致"全隐藏暂停渲染"永远不触发（用户实测：隐藏全部后占用仍高）。改用"是否真有尺寸"。
   function isAnyOverlayOpen() {
     const els = [ctxMenu, sizePanel, freqPanel, volPanel, musicPanel, chatterPanel, cpEl, bcEl, bcHist, inputCtx];
-    for (const el of els) { if (el && el.style.display !== 'none') return true; }
+    for (const el of els) {
+      if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) return true;
+    }
     return false;
   }
   const hud = document.createElement('div');
@@ -2347,6 +2381,12 @@
     // → 中止拖动，避免 drag.on 卡死导致所有点击失效
     if (drag.on && drag.lastMoveAt && (now - drag.lastMoveAt) > 2500) abortDrag();
 
+    // ===== 三只全隐藏且无浮层 → 暂停渲染（省 GPU 合成与帧循环，与"被覆盖暂停"同强度）=====
+    if (shouldPauseByHidden()) {
+      pausedAllHidden = true;
+      syncRenderPause();
+      return;
+    }
     // ===== 空闲降帧（省 CPU）=====
     // 三只都处于"普通待机"（无走路/无姿势/无物理运动）且没有拖动/互聊/气泡/浮层时，
     // 渲染限制到 ~24fps（视觉几乎无差，CPU 约减半）。一旦有任何活动立刻恢复满帧。

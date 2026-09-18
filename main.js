@@ -142,6 +142,10 @@ function startMousePoll() {
   if (mousePollTimer) clearInterval(mousePollTimer);
   mousePollTimer = setInterval(mousePollTick, 70);
 }
+// 调试：QX_IDOLSHIDE=1 → 启动 5s 后隐藏全部小偶像（用于验证"全隐藏暂停渲染"的内存表现）
+if (process.env.QX_IDOLSHIDE === '1') {
+  setTimeout(() => { try { setIdolsShown(false); console.log('[DBG] all idols hidden (QX_IDOLSHIDE)'); } catch (e) { /* noop */ } }, 5000);
+}
 
 // ===== 遮挡检测：被其它窗口完全覆盖时暂停渲染（用户要求的省电优化）=====
 // 用 powershell 每 5s 枚举上层可见窗口，判断桌宠窗口矩形是否被完全覆盖。
