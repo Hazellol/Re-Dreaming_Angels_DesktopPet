@@ -146,6 +146,20 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **语义澄清**（重要）：未置顶时"被覆盖 → 点不到"是 Windows 的正常层级行为（用户自己的选择），**不应靠自动提层去绕过**；想找她们就用救援入口。`mousePollTick` 仍保留 `setIgnoreMouseEvents(false)`（鼠标在角色区域时窗口可接收点击）——这保证"未被覆盖时点击正常"，但不再改变窗口层级。
     **实测**：QX_NOTOP=1 + 全屏浏览器覆盖 + 光标移到角色处 → 日志 `top=0 interim=0` 且截图确认**她们保持被覆盖不弹出** ✓；QX_FRONTTEST 触发救援 → 裁剪截图确认**浮到浏览器之上** ✓；热键实际生效键会随占用情况动态变化（实测 `Control+Alt+Z` / `Control+Alt+D` 两种），菜单底部与托盘 tooltip 显示真实键 ✓。
     **教训**：修 bug 的临时策略要"够用就好"——自动提层这种强干预会变成新的体验问题；交互入口应交给用户显式触发。
+22. **层级语义修正 + 点外部关闭 + 内存自查（用户反馈批）**：
+    1. **"立即显示在最上层"取代"临时置顶 5s"**：召回入口（快捷键/托盘/托盘菜单）改为 `showOnTopOnce(300)` —— **脉冲式**：`setAlwaysOnTop(true)+moveTop()` 让她们**立刻出现**，约 300ms 后自动恢复用户的置顶设置（此后其它窗口可正常覆盖）。旧实现"临时置顶 5 秒"会锁死层级（用户 5 秒内无法用别的窗口盖住她们）。
+    2. **修复"关闭保持置顶却没生效"**：`set-topmost(false)` 旧分支在 `interimTop` 残留时会跳过关闭 → 改为**无条件** `setAlwaysOnTop(userTopmost)`。
+    3. **修复"她们偶尔自己冒到最上层"**：输入通道自愈的 **L2** 原本无条件 `setAlwaysOnTop(true)` 且不回落 → 改为**尊重 `userTopmost`**（关置顶时不置顶）。
+    4. **移除临时置顶机制**（`interimTop`/`setInterimTop` 全部清理），悬停自动浮出彻底消失。
+    5. **点击浮层外部即关闭**：右键菜单 + 从菜单打开的面板（大小/频率/音量/互聊设置）→ 点击外部任何位置直接关闭；**音乐播放器保持常驻**（用户要求），聊天面板/对话框/输入右键菜单不受影响。为保证"点外部"的点击能到达窗口，**模态浮层打开期间强制可交互**（`reportHitRects` 的 force 条件加入 `modalOpen`）——否则窗口处于穿透态，点击被下层吃掉、菜单关不掉。实测：菜单打开 → 鼠标移到空白处点击 → 菜单关闭 ✓。
+    6. **内存自查**（实测：Electron 6 进程合计工作集约 **680MB**：182/137/134/99/84/43MB）。优化思路（按性价比）：
+       - ⭐⭐⭐ **控制台窗口按需创建**：现状启动即创建常驻 renderer 进程；改为"点开才建、关闭即 destroy" → 预计省 100~130MB；
+       - ⭐⭐ **BGM 改流式加载**：现状 `readAudio` 返回 **base64 data URL**（整首歌字符串驻留 + 每次播放重读）；改用自定义 protocol（`protocol.handle('pet', …)`）或 file:// 让 `<audio src>` 流式读取（asar 内亦可用）→ 省 15~40MB 与解码开销；
+       - ⭐⭐ **空闲降帧**：三只均在普通待机（无动作/走动/气泡/拖动/浮层）时 60fps → ~24fps，CPU 约减半；
+       - ⭐ **纹理懒加载/释放**：隐藏角色释放 Spine 纹理，重新显示时重载；
+       - ⭐ **Chromium 特性裁剪**：追加 `--disable-features`（MediaSessionService、HardwareMediaKeyHandling、GlobalMediaControls、Translate、AutofillServerCommunication 等）；
+       - ⭐ **V8 堆限制**：`--js-flags=--max-old-space-size=192`；
+       - ⭐ **降频**：rects 上报 150→300ms、鼠标轮询 70→100ms。
 
 ---
 

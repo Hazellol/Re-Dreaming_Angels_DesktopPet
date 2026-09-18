@@ -1872,8 +1872,22 @@
   for (const inp of [cpInput, bcInput]) {
     inp.addEventListener('contextmenu', (e) => { e.preventDefault(); showInputCtx(e.clientX, e.clientY, inp); });
   }
+  // 点击浮层外部 → 关闭（用户要求）：
+  //   · 右键菜单：点菜单外任何地方即关闭（原先只能点 ✕）
+  //   · 从菜单打开的面板（大小/频率/音量/互聊设置）：同样点外部关闭
+  //   · 例外：**音乐播放器**保持常驻（用户明确要求），输入框右键菜单、聊天/对话框不受影响
   window.addEventListener('mousedown', (e) => {
     if (inputCtx.style.display !== 'none' && !inputCtx.contains(e.target)) hideInputCtx();
+    if (ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) hideCtxMenu();
+    const closers = [
+      [sizePanel, hideSizePanel],
+      [freqPanel, hideFreqPanel],
+      [volPanel, hideVolPanel],
+      [chatterPanel, hideChatterPanel]
+    ];
+    for (const [el, hide] of closers) {
+      if (el && el.style.display !== 'none' && !el.contains(e.target)) { try { hide(); } catch (err) { /* noop */ } }
+    }
   });
 
   // 气泡模式：历史对话查看（复用手机聊天面板的 UI：头部+消息流，去掉输入行，仅复制按钮）
@@ -2141,7 +2155,15 @@
   function reportHitRects(force) {
     const rects = collectHitRects();
     const json = JSON.stringify(rects);
-    const forceInteractive = !!(drag.on || editMsgIndex != null);
+    // 模态浮层（右键菜单 / 可关闭面板）打开期间强制可交互——否则窗口处于穿透态，
+    // "点击菜单外部关闭"的点击会被下层窗口吃掉，菜单关不掉（用户要求的点外部关闭就失效了）。
+    // 音乐播放器 / 聊天面板 等常驻浮层不在此列（鼠标悬停其上时仍可交互）。
+    const modalOpen = (ctxMenu.style.display !== 'none') ||
+      (sizePanel && sizePanel.style.display !== 'none') ||
+      (volPanel && volPanel.style.display !== 'none') ||
+      (freqPanel && freqPanel.style.display !== 'none') ||
+      (chatterPanel && chatterPanel.style.display !== 'none');
+    const forceInteractive = !!(drag.on || editMsgIndex != null || modalOpen);
     if (!force && json === lastRectsJson && !forceInteractive) return;
     lastRectsJson = json;
     try { dk.sendHitRects(rects, forceInteractive, mouseEventCount); } catch (e) { /* noop */ }

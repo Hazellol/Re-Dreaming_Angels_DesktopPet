@@ -42,29 +42,12 @@ function toggleMainWindow() {
   }
 }
 
-// 保底召回：把三小只提到最前（临时置顶 1.8s 后恢复用户的置顶设置）
-// 用途：未置顶时被最大化窗口完全覆盖 → Windows 不会给被遮挡的下层窗口任何鼠标消息，
-// 悬停/右键物理上无法召回（穿透态收不到 mousemove 会死锁）；托盘点击 / 全局快捷键是可靠入口。
-let tempTopTimer = null;
+// 保底召回：把三小只**立即显示在最上层**（脉冲式，~300ms 后恢复用户置顶设置，不锁层级）
+// 用途：未置顶时被其它窗口盖住 → 用户按快捷键/点托盘即可让她们立刻出现；之后仍可被正常覆盖。
 let activeHotkey = null;   // 实际注册成功的救援快捷键（候选降级后）
 function hotkeyLabel() {
   if (!activeHotkey) return '';
   return activeHotkey.replace('Control', 'Ctrl');
-}
-function bringPetToFrontTemporarily(ms) {
-  if (!win || win.isDestroyed()) return;
-  const wasTop = win.isAlwaysOnTop();
-  try {
-    win.setAlwaysOnTop(true, 'floating');
-    win.moveTop();
-    win.setFocusable(false);   // 仍不抢焦点（不打断视频/游戏）
-  } catch (e) { /* noop */ }
-  if (!wasTop) {
-    if (tempTopTimer) clearTimeout(tempTopTimer);
-    tempTopTimer = setTimeout(() => {
-      try { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false, 'floating'); } catch (e) { /* noop */ }
-    }, ms || 1800);
-  }
 }
 
 // ===== 主进程鼠标轮询穿透裁决（核心健壮性机制）=====
@@ -82,29 +65,26 @@ const POLL_LOG = process.env.QX_POLLLOG === '1';
 
 // ===== 交互时"临时置顶"（根治未置顶时的点击死锁）=====
 // Windows z-order 铁律：鼠标点击永远由最上层窗口接收。未置顶时窗口沉在下层，
-// 即使把穿透关掉（可交互），点击仍被上层窗口吃掉；moveTop() 对后台非激活窗口不可靠，
-// 必须临时 setAlwaysOnTop(true) 才能真正浮起来。交互结束后（鼠标离开 ~2.6s）恢复到用户的置顶设置。
+// ===== "立即显示在最上层"（脉冲式，不做层级锁定）=====
+// 语义（用户要求）：用户主动召回时，三小只**立刻出现在最上层**；但不锁定层级——
+// 短暂置顶(~300ms)后立即恢复用户的置顶设置，此后其它窗口可以正常覆盖她们。
+// （旧实现用"临时置顶 5 秒"，那 5 秒内用户无法用别的窗口盖住她们，体验很差，已废弃。）
 let userTopmost = true;      // 用户"保持置顶"开关真源
-let interimTop = false;      // 因交互而临时置顶中
-let interimTopTimer = null;
-function setInterimTop(on) {
+let pulseTimer = null;
+function showOnTopOnce(ms) {
   if (!win || win.isDestroyed()) return;
-  if (!on) {
-    if (interimTopTimer) { clearTimeout(interimTopTimer); interimTopTimer = null; }
-    if (interimTop && !userTopmost) {
-      interimTop = false;
-      try { win.setAlwaysOnTop(false, 'floating'); } catch (e) { /* noop */ }
-    }
-    interimTop = false;
-    return;
-  }
-  if (!interimTop) {
-    interimTop = true;
-    try { win.setAlwaysOnTop(true, 'floating'); } catch (e) { /* noop */ }
-  }
-  try { win.moveTop(); } catch (e) { /* noop */ }
-  if (interimTopTimer) clearTimeout(interimTopTimer);
-  interimTopTimer = setTimeout(() => { interimTopTimer = null; setInterimTop(false); }, 5000);   // 主动救援后保持 5s 可交互，随后恢复用户设置
+  try {
+    win.setAlwaysOnTop(true, 'floating');
+    win.moveTop();
+  } catch (e) { /* noop */ }
+  if (pulseTimer) clearTimeout(pulseTimer);
+  pulseTimer = setTimeout(() => {
+    pulseTimer = null;
+    try {
+      if (!win || win.isDestroyed() || userTopmost) return;
+      win.setAlwaysOnTop(false, 'floating');   // 恢复"可被覆盖"
+    } catch (e) { /* noop */ }
+  }, ms || 300);
 }
 
 function startMousePoll() {
@@ -191,6 +171,8 @@ function checkInputChannel(cx, cy) {
       setTimeout(() => { try { if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(false, { forward: true }); } catch (e) { /* noop */ } }, 120);
     } else if (level === 2) {
       // L2：刷新层级 + 轻微改变窗口尺寸（触发窗口重新配置与重绘）
+      // ⚠️ 恢复时**必须尊重用户的置顶开关**——早期版本这里无条件 setAlwaysOnTop(true)，
+      // 导致"关闭置顶后她们偶尔自己冒到最上层"（用户实测反馈），已修。
       const b = win.getBounds();
       win.setAlwaysOnTop(false, 'floating');
       win.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height + 1 });
@@ -198,7 +180,7 @@ function checkInputChannel(cx, cy) {
         try {
           if (!win || win.isDestroyed()) return;
           win.setBounds(b);
-          win.setAlwaysOnTop(true, 'floating');
+          if (userTopmost) win.setAlwaysOnTop(true, 'floating');
           win.moveTop();
         } catch (e) { /* noop */ }
       }, 120);
@@ -232,7 +214,7 @@ function applyMouseIgnore(inside, cx, cy, why) {
           if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) { hit = ' hit=(' + r.x + ',' + r.y + ',' + r.w + 'x' + r.h + ')'; break; }
         }
       }
-      console.log('[POLL]', why, inside ? 'INTERACTIVE' : 'passthrough', 'cursor=(' + cx + ',' + cy + ')', 'rects=' + hitRects.length + hit, interimTop ? 'interimTop' : '');
+      console.log('[POLL]', why, inside ? 'INTERACTIVE' : 'passthrough', 'cursor=(' + cx + ',' + cy + ')', 'rects=' + hitRects.length + hit);
       // 持久化现场轨迹（QX_POLLLOG=1 时写入项目根 poll_diag.log，用于复现后取证）
       try {
         const rectsDump = hitRects.slice(0, 4).map((r) => r.x + ',' + r.y + ',' + r.w + 'x' + r.h).join(' | ');
@@ -240,7 +222,7 @@ function applyMouseIgnore(inside, cx, cy, why) {
           new Date().toISOString() + ' ' + why + ' ' + (inside ? 'INTERACTIVE' : 'passthrough') +
           ' cursor=(' + cx + ',' + cy + ') rects=' + hitRects.length +
           ' ignore=' + (mousePollInside ? 0 : 1) + ' top=' + (win.isAlwaysOnTop() ? 1 : 0) +
-          ' interim=' + (interimTop ? 1 : 0) + ' focusable=' + (win.isFocusable() ? 1 : 0) + hit +
+           ' focusable=' + (win.isFocusable() ? 1 : 0) + hit +
           ' R[' + rectsDump + ']\n');
       } catch (e) { /* noop */ }
     }
@@ -468,7 +450,7 @@ app.whenReady().then(() => {
     tray = new Tray(appIcon(32));
     tray.setToolTip('妄想天使桌宠（点击提到最前）');
     rebuildTrayMenu();
-    tray.on('click', () => bringPetToFrontTemporarily(5000));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
+    tray.on('click', () => showOnTopOnce(300));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
   } catch (e) { console.error('tray init failed', e); }
   // 全局快捷键：把三小只提到最前（未置顶被覆盖/被截图工具接管时的救援入口）
   // ⚠️ globalShortcut 需独占注册：被其他软件占用会返回 false → 依次尝试候选，成功即用并告知 UI
@@ -476,14 +458,14 @@ app.whenReady().then(() => {
   activeHotkey = null;
   for (const hk of HOTKEY_CANDIDATES) {
     try {
-      if (globalShortcut.register(hk, () => bringPetToFrontTemporarily(5000))) { activeHotkey = hk; break; }
+      if (globalShortcut.register(hk, () => showOnTopOnce(300))) { activeHotkey = hk; break; }
     } catch (e) { /* try next */ }
   }
   console.log('[HOTKEY] active =', activeHotkey || '(none)');
   if (tray) { try { tray.setToolTip('妄想天使桌宠（点击提到最前' + (activeHotkey ? ' · ' + hotkeyLabel() : '') + '）'); } catch (e) { /* noop */ } }
   // 调试：QX_FRONTTEST=1 → 启动 5s 后自动执行一次"提到最前"（验证被覆盖时的提层机制）
   if (process.env.QX_FRONTTEST === '1') {
-    setTimeout(() => { console.log('[FRONTTEST] bring pet to front now'); bringPetToFrontTemporarily(8000); }, 5000);
+    setTimeout(() => { console.log('[FRONTTEST] bring pet to front now'); showOnTopOnce(600); }, 5000);
   }
 
   // 调试：QX_AUTOLAUNCH_TEST=1 → 启动时验证"写入→读取"往返（排查开关打不上钩）
@@ -539,10 +521,11 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('set-topmost', (e, v) => {
     try {
-      userTopmost = !!v;   // 用户置顶开关真源（交互临时置顶到期后恢复到它）
+      userTopmost = !!v;   // 用户"保持置顶"真源
       if (win && !win.isDestroyed()) {
-        if (userTopmost) { interimTop = false; win.setAlwaysOnTop(true, 'floating'); }
-        else if (!interimTop) win.setAlwaysOnTop(false, 'floating');
+        // 无条件应用：早期版本在"临时置顶残留"时会跳过关闭分支，导致"关了置顶却仍盖不住别的东西"（用户实测反馈）
+        win.setAlwaysOnTop(userTopmost, 'floating');
+        if (userTopmost) win.moveTop();
       }
       return !!(win && !win.isDestroyed() && win.isAlwaysOnTop());
     } catch (err) { return false; }
@@ -742,7 +725,7 @@ app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch (e) { 
 function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '📌 把三小只提到最前', click: () => bringPetToFrontTemporarily(5000) },
+    { label: '📌 把三小只提到最前', click: () => showOnTopOnce(300) },
     { label: '打开控制面板', click: () => { if (panel && !panel.isDestroyed()) panel.show(); else createPanelWindow(); } },
     { label: '显示/隐藏小偶像', click: () => toggleMainWindow() },
     { type: 'separator' },
