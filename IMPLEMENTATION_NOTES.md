@@ -195,6 +195,10 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     3. **V8 堆上限**：`app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256')`（桌宠 JS 堆远小于默认 4GB，收紧促 GC）。实测内存无明显变化（大头是 GPU/贴图，不在 V8 堆）——保留无害。
     4. **Electron 5 进程占用说明**（用户提问）：①最大（~190-210MB，CPU 6.7%）= **GPU 进程**（透明窗口合成 + WebGL 渲染）；②第二（~62-135MB，CPU ~6.5%）= **桌宠渲染进程**（页面 + Spine + JS 逻辑）；③（~65-128MB，CPU 0.1%）= **主进程**（窗口/IPC/鼠标轮询/遮挡检测）；④（~50-82MB）= **utility**（network service 等）；⑤（~6-42MB）= **zygote / crashpad**（进程孵化与崩溃上报）。合计 ≈ **584MB**（优化前 680MB）。
     **进一步优化方案（按性价比，未全部实施）**：①隐藏角色释放 GPU 纹理（-10~30MB，重显示时重载）；②贴图 PNG→WebP 压缩（-10~20MB）；③再裁剪一批 `--disable-features`（-10~30MB）；④暂停渲染期间降低轮询/上报频率（CPU 微降）；⑤**把透明窗口缩小到角色活动区域**（GPU 合成面积大幅下降，收益最大但需重构布局）；⑥`--disable-gpu-compositing`（不推荐，伤性能）。
+28. **落地优化 ③④（用户选定，要求"验证功能、不出 bug"）**：
+    1. **③ 特性裁剪扩充**：`disable-features` 由 8 项扩到 **18 项**（新增 BackForwardCache / SpareRendererForSitePerProcess / WebRtcHideLocalIpsWithMdns / MediaRouter / DialMediaRouteProvider / PictureInPicture / PushMessaging / NotificationTriggers / AutofillCreditCardUpload / AutofillEnableAccountWalletStorage / OptimizationGuideModelDownloading）——全部是桌面宠物完全不使用的浏览器功能。**实测**：无任何报错、内存改善不明显（这些服务原本按需启动，属"保留无害"）。
+    2. **④ 暂停渲染时降频**：被完全覆盖（`occluded`）期间，主进程鼠标轮询 **70→300ms**、renderer 可交互矩形上报 **150→1000ms**；恢复路径不受影响（快捷键/托盘/浮层打开走 `force=true` 立即上报并解除暂停）。
+    3. **功能回归验证**（改完必跑）：默认启动+BGM 播放（无媒体/JS 错误）✓；三只渲染 ✓；右键菜单（含新增「🔧 打开控制台」）✓；聊天面板与气泡 ✓；控制台截图 ✓ —— **零回归**。
 
 ---
 

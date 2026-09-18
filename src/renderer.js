@@ -2159,7 +2159,13 @@
     if (dialog.open) push(dEl);
     return rects;
   }
+  let lastReportAt = 0;
   function reportHitRects(force) {
+    // 优化：被完全覆盖（渲染已暂停）时把上报频率从 150ms 降到 1000ms——
+    // 此时用户看不到她们，命中判定精度要求低；浮层/交互会走 force=true 立即上报。
+    const nowMs = performance.now();
+    if (!force && renderPaused && (nowMs - lastReportAt) < 1000) return;
+    lastReportAt = nowMs;
     const rects = collectHitRects();
     const json = JSON.stringify(rects);
     // 模态浮层（右键菜单 / 可关闭面板）打开期间强制可交互——否则窗口处于穿透态，

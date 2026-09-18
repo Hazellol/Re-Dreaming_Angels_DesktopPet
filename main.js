@@ -36,14 +36,25 @@ if (!gotLock) { app.quit(); return; }
 // 同时顺带裁剪一批桌宠用不到的 Chromium 服务以降低常驻占用（内存优化）。
 const DISABLED_FEATURES = [
   'CalculateNativeWinOcclusion',      // 修"被遮挡后输入失效"（必需）
-  'MediaSessionService',              // 媒体会话服务（桌宠不需要系统媒体控制）
+  // ---- 桌面宠物完全用不到的浏览器功能（内存/CPU 优化）----
+  'MediaSessionService',              // 媒体会话服务（不需要系统媒体控制）
   'HardwareMediaKeyHandling',         // 硬件媒体键接管
   'GlobalMediaControls',              // 全局媒体控制按钮
   'Translate',                        // 页面翻译
   'AutofillServerCommunication',      // 自动填充云通信
+  'AutofillCreditCardUpload',         // 信用卡上传
+  'AutofillEnableAccountWalletStorage',
   'OptimizationHints',                // 优化提示下载
+  'OptimizationGuideModelDownloading',// 优化模型下载
   'InterestFeedContentSuggestions',   // 内容建议
-  'CalculateNativeWinOcclusion'       // 去重占位（列表合并为单次 switch）
+  'BackForwardCache',                 // 前进后退缓存（本应用无页面导航）
+  'SpareRendererForSitePerProcess',   // 备用渲染进程（单页面 → 省一个进程的内存）
+  'WebRtcHideLocalIpsWithMdns',       // WebRTC mDNS（不使用 WebRTC）
+  'MediaRouter',                      // 媒体投屏路由
+  'DialMediaRouteProvider',           // DIAL 投屏
+  'PictureInPicture',                 // 画中画
+  'PushMessaging',                    // 推送消息
+  'NotificationTriggers'              // 通知触发器
 ].join(',');
 try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
@@ -94,6 +105,7 @@ let hitForceSince = 0;           // force 起始时间（超时兜底：renderer
 let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
 let mousePollTicks = 0;
+let mousePollLastAt = 0;   // 上次轮询时间（暂停渲染时降频用）
 const POLL_LOG = process.env.QX_POLLLOG === '1';
 
 // ===== 交互时"临时置顶"（根治未置顶时的点击死锁）=====
@@ -316,6 +328,12 @@ function applyMouseIgnore(inside, cx, cy, why) {
 }
 function mousePollTick() {
   if (!win || win.isDestroyed()) return;
+  // 内存/CPU 优化：被完全覆盖（暂停渲染）时，把鼠标轮询频率从 70ms 降到 300ms。
+  // 此时用户看不到她们，判定精度要求低；恢复路径（快捷键/托盘/浮层）会立即解除暂停。
+  const nowMs = Date.now();
+  const minGap = occluded ? 300 : 70;
+  if (nowMs - mousePollLastAt < minGap) return;
+  mousePollLastAt = nowMs;
   // 超时兜底：force（拖动中）持续 >20s 视为 renderer 状态卡住 → 忽略，避免永久临时置顶
   if (hitForceInteractive && hitForceSince && Date.now() - hitForceSince > 20000) {
     hitForceInteractive = false;
