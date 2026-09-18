@@ -223,7 +223,10 @@
       <div id="view-home" class="view">
         <div id="cards"></div>
         <div id="footer">
-          <div class="f-btn" id="btn-show">👀 显示/隐藏小偶像</div>
+          <div class="f-btn" id="btn-show-wrap" title="打开时三小只出现在桌面；关闭时她们去休息（不影响后台功能）">
+            <span id="idols-show-state">👀 显示小偶像：开</span>
+            <input type="checkbox" id="idols-show" checked style="accent-color:#e0559a;width:16px;height:16px;margin-left:6px;vertical-align:-3px;">
+          </div>
           <div class="f-btn" id="btn-autolaunch-wrap" title="随 Windows 登录自动启动桌宠（切换即生效）">
             <span id="sys-autolaunch-state">⚙ 开机自启动：关</span>
             <input type="checkbox" id="sys-autolaunch" style="accent-color:#e0559a;width:16px;height:16px;margin-left:6px;vertical-align:-3px;">

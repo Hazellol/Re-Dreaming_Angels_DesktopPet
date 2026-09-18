@@ -68,7 +68,27 @@
   }
   dk.onPanelInit(applyState);
 
-  document.getElementById('btn-show').addEventListener('click', () => dk.toggleIdolWindow());
+  // 显示/隐藏小偶像（勾选框形式；状态与主进程同步——救援快捷键恢复显示时这里也会跟着变）
+  const elIdolsShow = document.getElementById('idols-show');
+  const elIdolsShowState = document.getElementById('idols-show-state');
+  function renderIdolsShown(on) {
+    if (elIdolsShow) elIdolsShow.checked = !!on;
+    if (elIdolsShowState) elIdolsShowState.textContent = '👀 显示小偶像：' + (on ? '开' : '关');
+  }
+  (async () => {
+    try { renderIdolsShown(await dk.getIdolsShown()); } catch (e) { /* noop */ }
+  })();
+  if (elIdolsShow) {
+    elIdolsShow.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      try { renderIdolsShown(await dk.setIdolsShown(elIdolsShow.checked)); } catch (err) { renderIdolsShown(elIdolsShow.checked); }
+    });
+  }
+  const elShowWrap = document.getElementById('btn-show-wrap');
+  if (elShowWrap) {
+    elShowWrap.addEventListener('click', (e) => { if (e.target !== elIdolsShow && elIdolsShow) elIdolsShow.click(); });
+  }
+  try { dk.onIdolsShown((on) => renderIdolsShown(on)); } catch (e) { /* noop */ }
   document.getElementById('btn-min').addEventListener('click', () => dk.minimizePanel());
   document.getElementById('btn-quit').addEventListener('click', () => dk.quit());
 

@@ -764,9 +764,15 @@
   // 三路音量：总音量(基准) × 各自比例；静音=全部归零
   function sfxEffVolume() { return audioCfg.muted ? 0 : (audioCfg.master / 100) * (audioCfg.sfxVol / 100); }
   function bgmEffVolume() { return audioCfg.muted ? 0 : (audioCfg.master / 100) * (audioCfg.bgmVol / 100); }
+  // 音频流式加载：走自定义协议 pet://（主进程映射到 assets/ 或用户歌曲目录，支持 asar）。
+  // 旧实现用 readAudio → base64 data URL：整首音频字符串常驻内存 + 每次播放重新读盘解码，
+  // 是内存/CPU 的大头（用户反馈占用高）——改为流式后按需读取。
+  function petUrl(rel) {
+    return 'pet://' + String(rel).split('/').map(encodeURIComponent).join('/');
+  }
   function playSfxFile(file) {
     try {
-      const a = new Audio(dk.readAudio(file));
+      const a = new Audio(petUrl(file));
       a.volume = sfxEffVolume();
       a.play().catch(() => { /* autoplay 被拒时静默 */ });
     } catch (e) { /* noop */ }
@@ -782,7 +788,7 @@
   }
   function startBgm() {
     stopBgm();
-    bgmAudio = new Audio(dk.readAudio(BGM_FILES[audioCfg.bgmIdx]));
+    bgmAudio = new Audio(petUrl(BGM_FILES[audioCfg.bgmIdx]));
     bgmAudio.loop = (audioCfg.playMode === 'loop');
     applyBgmVolume();
     bgmAudio.play().catch(() => { audioCfg.bgmOn = false; });
@@ -2198,6 +2204,13 @@
   // ================= 主循环 =================
   let lastTime = 0;
   let frameCount = 0;
+  let lastRenderAt = 0;   // 空闲降帧用：上次实际渲染时间
+  // 是否有任何浮层打开（空闲降帧判断用）
+  function isAnyOverlayOpen() {
+    const els = [ctxMenu, sizePanel, freqPanel, volPanel, musicPanel, chatterPanel, cpEl, bcEl, bcHist, inputCtx];
+    for (const el of els) { if (el && el.style.display !== 'none') return true; }
+    return false;
+  }
   const hud = document.createElement('div');
   hud.id = 'hud';
   hud.style.cssText = 'position:fixed;left:8px;top:8px;color:#000;background:rgba(255,255,255,.92);font:12px monospace;padding:4px 8px;z-index:99;white-space:pre;';
@@ -2220,6 +2233,22 @@
     // 拖动状态超时兜底：拖动中若 2.5s 内没有任何鼠标移动更新（mouseup 被截图工具等吞掉的特征）
     // → 中止拖动，避免 drag.on 卡死导致所有点击失效
     if (drag.on && drag.lastMoveAt && (now - drag.lastMoveAt) > 2500) abortDrag();
+
+    // ===== 空闲降帧（省 CPU）=====
+    // 三只都处于"普通待机"（无走路/无姿势/无物理运动）且没有拖动/互聊/气泡/浮层时，
+    // 渲染限制到 ~24fps（视觉几乎无差，CPU 约减半）。一旦有任何活动立刻恢复满帧。
+    const idleNow = !drag.on && !chatter.active && !bubbleLock && !dialog.open &&
+      !isAnyOverlayOpen() &&
+      !ROLE_KEYS.some((k) => {
+        const c = idols[k];
+        if (c.hidden) return false;
+        return !!c.walkTween || c.poseId !== 0 || idolPhysicallyBusy(k);
+      });
+    if (idleNow && (now - lastRenderAt) < 40) {   // 40ms ≈ 24fps
+      requestAnimationFrame(frame);
+      return;
+    }
+    lastRenderAt = now;
 
     // 每帧先透明清屏：全部角色隐藏/无绘制时，表面必须立即变透明（否则最后一只的
     // 画面会"卡"在桌面上——WebGL 无 draw 时合成器不重绘，残留最后一个绘制帧）

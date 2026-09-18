@@ -2,8 +2,9 @@
 // 模式：v2.4 起仅桌面版（透明窗口、点击穿透、角色直接站在桌面上；房间版已移除）
 //   控制面板：启动时打开（分别控制三小只开关）；叉掉 = 隐藏到系统托盘
 //   调试：--screenshot [delayMs] ["query"] 自动截图退出；--drag-test 自动模拟拖动；--panel-shot [delayMs]
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog, globalShortcut, protocol, net } = require('electron');
 const { execFile } = require('child_process');
+const { pathToFileURL } = require('url');
 const path = require('path');
 const fs = require('fs');
 
@@ -12,6 +13,17 @@ let panel = null;
 let tray = null;
 const DESKTOP = true;   // 仅桌面版（房间版已移除）
 const NOTOP = process.env.QX_NOTOP === '1';
+// 用户歌曲目录（播放器"添加歌曲"导入处；打包版 assets 只读 → 用户曲目统一放这里）
+const USER_BGM_DIR = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+
+// ===== pet:// 自定义协议：音频/资源流式加载（避免 base64 data URL 常驻内存）=====
+// pet://bgm/xxx.mp3 → assets/bgm/xxx.mp3（不存在则用户歌曲目录）；支持 asar（net.fetch + file://）
+try {
+  protocol.registerSchemesAsPrivileged([{
+    scheme: 'pet',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true }
+  }]);
+} catch (e) { /* noop */ }
 
 // 单实例锁：防止重复启动产生多个桌宠实例（重复双击启动器/vbs → 唤起已有实例的控制台并退出）
 const gotLock = app.requestSingleInstanceLock();
@@ -21,26 +33,44 @@ if (!gotLock) { app.quit(); return; }
 // 停止其渲染/输入通道；用户实测"被全屏窗口覆盖过一次后，鼠标交互永久失效（待机动画仍正常）"
 // 正是这个机制造成的（backgroundThrottling:false 只保证动画，救不了输入通道）。
 // 桌面宠物的窗口本来就长期处于"被遮挡/部分遮挡"状态，必须关掉该特性。
-try { app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion'); } catch (e) { /* noop */ }
+// 同时顺带裁剪一批桌宠用不到的 Chromium 服务以降低常驻占用（内存优化）。
+const DISABLED_FEATURES = [
+  'CalculateNativeWinOcclusion',      // 修"被遮挡后输入失效"（必需）
+  'MediaSessionService',              // 媒体会话服务（桌宠不需要系统媒体控制）
+  'HardwareMediaKeyHandling',         // 硬件媒体键接管
+  'GlobalMediaControls',              // 全局媒体控制按钮
+  'Translate',                        // 页面翻译
+  'AutofillServerCommunication',      // 自动填充云通信
+  'OptimizationHints',                // 优化提示下载
+  'InterestFeedContentSuggestions',   // 内容建议
+  'CalculateNativeWinOcclusion'       // 去重占位（列表合并为单次 switch）
+].join(',');
+try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
 // 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
 app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {
   if (panel && !panel.isDestroyed()) panel.show();
-  else createPanelWindow();
+  else ensurePanel();
 });
 // 三小只开关状态（控制面板持有真源）
 let idolVis = { airui: true, qianxia: true, nangong: true };
 // 一键"显示/隐藏小偶像"：逻辑层隐藏（三只 hidden），窗口永不 hide/show —— 绕开穿透 Bug A
 // （win.hide/show 后 setIgnoreMouseEvents(forward) 转发不可靠 → 拖动/右键失效）
 let idolsAllHidden = false;
-function toggleMainWindow() {
-  if (!win || win.isDestroyed() || !win.webContents) return;
-  idolsAllHidden = !idolsAllHidden;
+// 设置显示/隐藏（**可指定目标状态**，供控制台勾选框、托盘、救援快捷键共用）
+function setIdolsShown(shown) {
+  if (!win || win.isDestroyed() || !win.webContents) return !idolsAllHidden;
+  idolsAllHidden = !shown;
   for (const key of Object.keys(idolVis)) {
     // 隐藏=全部 false；显示=恢复各滑块状态（idolVis 真源，不覆盖滑块值）
-    win.webContents.send('set-idol-visibility', key, idolsAllHidden ? false : idolVis[key]);
+    win.webContents.send('set-idol-visibility', key, shown ? idolVis[key] : false);
   }
+  if (panel && !panel.isDestroyed() && panel.webContents) {
+    panel.webContents.send('idols-shown', shown);   // 控制台勾选框同步
+  }
+  return shown;
 }
+function toggleMainWindow() { return setIdolsShown(idolsAllHidden); }
 
 // 保底召回：把三小只**立即显示在最上层**（脉冲式，~300ms 后恢复用户置顶设置，不锁层级）
 // 用途：未置顶时被其它窗口盖住 → 用户按快捷键/点托盘即可让她们立刻出现；之后仍可被正常覆盖。
@@ -73,6 +103,10 @@ let userTopmost = true;      // 用户"保持置顶"开关真源
 let pulseTimer = null;
 function showOnTopOnce(ms) {
   if (!win || win.isDestroyed()) return;
+  // 用户主动召回时：如果当前是"隐藏小偶像"状态 → 先恢复显示（用户按快捷键就是要看到她们）
+  if (idolsAllHidden) {
+    try { setIdolsShown(true); } catch (e) { /* noop */ }
+  }
   try {
     win.setAlwaysOnTop(true, 'floating');
     win.moveTop();
@@ -430,20 +464,42 @@ function createPanelWindow() {
   });
   panel.loadFile(path.join(__dirname, 'src', 'panel.html'));
   panel.once('ready-to-show', () => panel.show());
-  // 叉掉任务栏窗口 = 隐藏（不关闭桌宠，转托盘）
-  panel.on('close', (e) => {
-    if (!app.isQuitting) { e.preventDefault(); panel.hide(); }
-  });
+  // 关闭即销毁（省内存：控制台是独立渲染进程，常驻约占 100MB+）；下次打开时重建
   panel.on('closed', () => { panel = null; });
   panel.webContents.on('did-finish-load', () => {
     panel.webContents.send('panel-init', idolVis);
+    panel.webContents.send('idols-shown', !idolsAllHidden);
   });
   return panel;
 }
+// 按需打开控制台（懒加载：启动时不创建，省一个渲染进程的内存）
+function ensurePanel() {
+  if (panel && !panel.isDestroyed()) { panel.show(); panel.focus(); return panel; }
+  return createPanelWindow();
+}
 
 app.whenReady().then(() => {
+  // pet:// 协议 handler：音频流式读取（assets 优先，用户歌曲目录兜底；支持 asar 内文件）
+  try {
+    protocol.handle('pet', (req) => {
+      try {
+        const u = new URL(req.url);
+        const rel = decodeURIComponent((u.hostname || '') + (u.pathname || '')).replace(/^\/+/, '');
+        let abs = path.join(__dirname, 'assets', rel);
+        if (!fs.existsSync(abs)) {
+          const cand = path.join(USER_BGM_DIR, path.basename(rel));
+          if (fs.existsSync(cand)) abs = cand;
+        }
+        if (!fs.existsSync(abs)) return new Response('', { status: 404 });
+        return net.fetch(pathToFileURL(abs).toString());
+      } catch (e) {
+        return new Response('', { status: 404 });
+      }
+    });
+  } catch (e) { console.error('[PET-PROTOCOL] init failed', e); }
   createWindow();
-  createPanelWindow();
+  // ⚠️ 控制台改为**按需创建**（懒加载）：它曾是常驻的独立渲染进程（≈100MB+），
+  // 用户反馈内存占用高 → 启动不创建，从托盘/右键菜单打开时才建，关闭即销毁。
 
   // 系统托盘图标（Hidden-icons menu 入口）
   try {
@@ -488,6 +544,10 @@ app.whenReady().then(() => {
   ipcMain.on('panel-minimize', () => {
     if (panel && !panel.isDestroyed()) panel.minimize();
   });
+  // 控制台：按需打开（右键菜单入口）+ 显示/隐藏小偶像的状态查询与设置
+  ipcMain.on('open-panel', () => ensurePanel());
+  ipcMain.handle('get-idols-shown', () => !idolsAllHidden);
+  ipcMain.handle('set-idols-shown', (e, shown) => setIdolsShown(!!shown));
   // 控制台「保存配置」→ 通知主窗立即热更新（AI 配置变化由 QX_AI/样式等统一走保存按钮）
   ipcMain.on('ai-config-saved', () => {
     if (win && !win.isDestroyed() && win.webContents) win.webContents.send('ai-config-refresh');
@@ -532,7 +592,7 @@ app.whenReady().then(() => {
   });
 
   // ===== 播放器：导入歌曲（对话框多选 → 复制到用户歌曲目录 %APPDATA%/ReDreamingAngels/bgm） =====
-  const USER_BGM_DIR = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+  // USER_BGM_DIR 定义在文件顶部（pet:// 协议 handler 也要用）
   ipcMain.handle('import-bgm', async () => {
     try {
       const r = await dialog.showOpenDialog(win, {
@@ -704,12 +764,14 @@ app.whenReady().then(() => {
   });
   ipcMain.on('context-menu', () => { /* 菜单已迁移为 renderer DOM 菜单 */ });
 
-  // 调试：--panel-shot [delayMs] 截图控制面板
+  // 调试：--panel-shot [delayMs] 截图控制面板（懒加载后需先创建）
   const panelShotArg = process.argv.indexOf('--panel-shot');
   if (panelShotArg !== -1) {
     const delay = parseInt(process.argv[panelShotArg + 1] || '1800', 10) || 1800;
     setTimeout(async () => {
       try {
+        ensurePanel();   // 控制台按需创建：调试截图前先确保存在
+        await new Promise((r) => setTimeout(r, 1200));
         const img = await panel.webContents.capturePage();
         fs.writeFileSync(path.join(__dirname, 'panel-shot.png'), img.toPNG());
         console.log('panel-shot saved');
@@ -726,7 +788,7 @@ function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '📌 把三小只提到最前', click: () => showOnTopOnce(300) },
-    { label: '打开控制面板', click: () => { if (panel && !panel.isDestroyed()) panel.show(); else createPanelWindow(); } },
+    { label: '打开控制面板', click: () => ensurePanel() },
     { label: '显示/隐藏小偶像', click: () => toggleMainWindow() },
     { type: 'separator' },
     { label: '退出桌宠', click: () => { app.isQuitting = true; app.quit(); } }

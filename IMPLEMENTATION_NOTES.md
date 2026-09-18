@@ -160,6 +160,16 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
        - ⭐ **Chromium 特性裁剪**：追加 `--disable-features`（MediaSessionService、HardwareMediaKeyHandling、GlobalMediaControls、Translate、AutofillServerCommunication 等）；
        - ⭐ **V8 堆限制**：`--js-flags=--max-old-space-size=192`；
        - ⭐ **降频**：rects 上报 150→300ms、鼠标轮询 70→100ms。
+23. **控制台勾选框 + 救援恢复显示 + 内存优化落地（实测报告）**：
+    1. **"显示/隐藏小偶像"改勾选框**：控制台主页 `#idols-show`（与"开机自启动"同款），主进程新增 `get-idols-shown`/`set-idols-shown`（可指定目标状态，替代原 toggle）与 `idols-shown` 广播（快捷键恢复显示时勾选框同步）。
+    2. **救援快捷键自动恢复显示**：`showOnTopOnce()` 开头检查 `idolsAllHidden`，若为隐藏态则先 `setIdolsShown(true)` —— 用户按 Ctrl+Alt+Z / 点托盘时，即使之前关了显示，也会立刻让三小只出现。
+    3. **内存优化三项（已落地并实测）**：
+       - **控制台懒加载**：启动不再创建（原为常驻独立渲染进程）；托盘/右键"打开控制台"才建；**关闭即销毁**（`ensurePanel()`）；新增 `open-panel` IPC 供渲染进程入口；`--panel-shot` 调试自建面板。
+       - **音频流式加载**：新增 **`pet://` 自定义协议**（`protocol.handle` + `net.fetch(pathToFileURL)`，assets 优先、用户歌曲目录兜底、支持 asar）——音效与 BGM 由 `new Audio(pet://…)` 流式读取，替代原 `readAudio → base64 data URL`（整首字符串常驻 + 每次重读）。
+       - **空闲降帧**：三只均为普通待机且无拖动/互聊/气泡/浮层时，渲染限流 ~24fps（`lastRenderAt` + `isAnyOverlayOpen()`），有活动立即恢复满帧。
+       - **Chromium 特性裁剪**：`disable-features` 合并为单次 switch（CalculateNativeWinOcclusion + MediaSessionService + HardwareMediaKeyHandling + GlobalMediaControls + Translate + AutofillServerCommunication + OptimizationHints + InterestFeedContentSuggestions）。
+    **实测对比**（同一台机器、同场景）：进程 **6 → 5**；工作集 **679.9MB → ~590MB（-90MB，-13%）**；空闲 CPU（10s 窗口）**4.73s → 4.11s**（空闲降帧在真正静止时收益更大；她们走动/冒泡时会满帧，故平均值改善有限）。音频无媒体加载错误 ✓ 控制台勾选框截图验证 ✓。
+    **后续可选**（未做）：①"完全静止时暂停 Spine 动画 + 停止渲染"（CPU 可再近 0，代价是视觉完全静止，建议做成选项）；②隐藏角色释放纹理；③`--js-flags=--max-old-space-size=192`。
 
 ---
 
