@@ -6,6 +6,31 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard,
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 const path = require('path');
+
+// ===== Win32 窗口区域（SetWindowRgn）：把窗口"形状"限制为角色/浮层矩形 ====
+// 背景（已知问题 K1）：全屏透明窗口一旦进入"可交互"状态，会把正在播放的视频的硬件叠加层
+// （DirectComposition video overlay）整片废掉 → 视频黑屏；对照同机"鲸鱼桌宠"窗口仅 303×221
+// 且一直可交互却不黑屏 → **关键是窗口覆盖面积**。
+// 解法：保持窗口仍为全屏（渲染不受限），但用 SetWindowRgn 把"真实存在的窗口区域"收缩为
+// 角色/浮层的矩形并集 —— 形状之外完全不参与命中与合成 → 视频 overlay 得以保留 ✓
+// 通过 koffi（预编译 FFI，无需编译工具链）调用；任一环节失败自动降级为"无区域"（原行为）。
+let regionApi = null;
+const USE_REGION = process.env.QX_NOREGION !== '1';
+try {
+  const koffi = require('koffi');
+  const user32 = koffi.load('user32.dll');
+  const gdi32 = koffi.load('gdi32.dll');
+  regionApi = {
+    SetWindowRgn: user32.func('int SetWindowRgn(uintptr_t hWnd, uintptr_t hRgn, int bRedraw)'),
+    CreateRectRgn: gdi32.func('uintptr_t CreateRectRgn(int x1, int y1, int x2, int y2)'),
+    CombineRgn: gdi32.func('int CombineRgn(uintptr_t hrgnDest, uintptr_t hrgnSrc1, uintptr_t hrgnSrc2, int fnCombineMode)'),
+    DeleteObject: gdi32.func('int DeleteObject(uintptr_t hObject)')
+  };
+  console.log('[REGION] koffi ready (SetWindowRgn available)');
+} catch (e) {
+  console.log('[REGION] koffi unavailable → fallback (no window region):', e && e.message);
+  regionApi = null;
+}
 const fs = require('fs');
 
 let win = null;
@@ -307,6 +332,43 @@ function checkInputChannel(cx, cy) {
     }
   } catch (e) { /* noop */ }
 }
+// ===== 窗口区域（形状）应用：把窗口限制为「角色 + 浮层」的矩形并集 =====
+// rects 为窗口 client 坐标（CSS px）；空数组 = 清除区域、恢复完整窗口矩形。
+// 形状之外：窗口不参与命中（不挡下层点击）也不参与合成（视频 overlay 得以保留）。
+let regionKey = '';
+const REGION_PAD = 6;   // 物理像素边距：避免裁掉角色边缘/阴影，也减少形状的频繁微调
+function applyWindowRegion(rects) {
+  if (!regionApi || !USE_REGION || !win || win.isDestroyed()) return;
+  const list = Array.isArray(rects) ? rects : [];
+  const key = list.map((r) => Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.w) + 'x' + Math.round(r.h)).join('|');
+  if (key === regionKey) return;
+  regionKey = key;
+  try {
+    const buf = win.getNativeWindowHandle();
+    const hwnd = (typeof buf.readBigUInt64LE === 'function') ? buf.readBigUInt64LE(0) : BigInt(buf.readUInt32LE(0));
+    if (!list.length) { regionApi.SetWindowRgn(hwnd, 0, 1); return; }   // NULL region = 恢复整窗
+    const sf = (screen.getPrimaryDisplay() || {}).scaleFactor || 1;     // CSS px → 物理像素
+    let acc = 0;
+    for (const r of list) {
+      const rr = regionApi.CreateRectRgn(
+        Math.round(r.x * sf) - REGION_PAD, Math.round(r.y * sf) - REGION_PAD,
+        Math.round((r.x + r.w) * sf) + REGION_PAD, Math.round((r.y + r.h) * sf) + REGION_PAD
+      );
+      if (!rr) continue;
+      if (!acc) { acc = rr; continue; }
+      const merged = regionApi.CreateRectRgn(0, 0, 0, 0);
+      regionApi.CombineRgn(merged, acc, rr, 2);   // RGN_OR（并集）
+      regionApi.DeleteObject(acc);
+      regionApi.DeleteObject(rr);
+      acc = merged;
+    }
+    if (!acc) return;
+    regionApi.SetWindowRgn(hwnd, acc, 1);   // 成功后 region 归系统所有（不可再 DeleteObject）
+  } catch (e) {
+    console.log('[REGION] apply failed:', e && e.message);
+  }
+}
+
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
   // 调试开关（用于二分定位"视频黑屏"是否由穿透状态切换引起）：
@@ -871,6 +933,7 @@ app.whenReady().then(() => {
   ipcMain.on('hit-rects', (e, payload) => {
     if (!payload) return;
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
+    applyWindowRegion(hitRects);   // 窗口形状 = 角色/浮层矩形并集（修 K1 视频黑屏：形状外不参与合成）
     const f = !!payload.force;
     if (f && !hitForceInteractive) hitForceSince = Date.now();
     if (!f) hitForceSince = 0;

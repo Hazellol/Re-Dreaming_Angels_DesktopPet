@@ -12,7 +12,8 @@
   "license": "MIT",
   "dependencies": {
     "@esotericsoftware/spine-canvas": "^4.2.42",
-    "@esotericsoftware/spine-core": "^4.2.42"
+    "@esotericsoftware/spine-core": "^4.2.42",
+    "koffi": "^3.3.0"
   },
   "devDependencies": {
     "electron": "^44.1.1",
