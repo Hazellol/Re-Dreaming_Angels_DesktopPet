@@ -305,11 +305,10 @@ function checkInputChannel(cx, cy) {
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
   try {
-    if (why === 'resync') {
-      // 周期性"强制重应用"：先用相反值再切回——某些平台状态下（被截图工具/其它进程扰动后）
-      // 相同值重复下发不会真正刷新窗口扩展样式，值变化才会
-      win.setIgnoreMouseEvents(!inside ? false : true, { forward: true });
-    }
+    // 周期性重应用（resync）：**只重发目标值**，不再做"反向再切回"的强制 toggle。
+    // 原因（用户实测 bug）：频繁切换窗口的 WS_EX_TRANSPARENT 会让 DWM 反复重排合成路径，
+    // 从而破坏其它程序正在播放视频的硬件叠加层（视频黑屏）。反向 toggle 的收益（修复极端漂移）
+    // 已由"禁用遮挡检测"覆盖，因此改为最小扰动策略。
     win.setIgnoreMouseEvents(!inside, { forward: true });
     // ⚠️ 这里**刻意不做"悬停临时置顶"**：关闭"保持置顶"的语义就是"不抢层级、可以被别的窗口盖住"。
     // 早期为了修"被覆盖无法点击"曾在此处 setInterimTop(true)，副作用是"鼠标一经路过她们就自动浮出、
