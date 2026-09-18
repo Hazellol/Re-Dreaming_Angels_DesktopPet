@@ -46,6 +46,9 @@ const DISABLED_FEATURES = [
   'CalculateNativeWinOcclusion'       // 去重占位（列表合并为单次 switch）
 ].join(',');
 try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
+// V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
+// 降低峰值常驻内存（桌宠主要是贴图/GPU 占用，不在 V8 堆里，所以此值留足余量即可）。
+try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256'); } catch (e) { /* noop */ }
 // 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
 app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {

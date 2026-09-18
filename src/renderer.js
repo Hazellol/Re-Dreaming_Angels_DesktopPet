@@ -2272,10 +2272,14 @@
     // 且 lastTime 只在真正渲染这一帧时才更新（早期版本在函数开头更新 lastTime，导致跳帧时间被吞掉，
     // 动画播放变慢成"慢动作"——用户实测 bug）。
     // QX_NOFPS=1（调试）→ 跳过用户帧率上限，用于对比"限帧 vs 不限帧"的占用差异。
+    // 交互中（拖动角色 / 打开菜单面板 / 编辑消息）→ **不限帧**：交互流畅度优先，
+    // 否则拖动跟随会被限帧拖慢（用户实测疑问："帧率限制为什么会影响拖动"）。
     const noFpsLimit = dk.env('QX_NOFPS') === '1';
+    const interacting = !!(drag.on || editMsgIndex != null || isAnyOverlayOpen());
     const activeMinMs = noFpsLimit ? 0 : (1000 / maxFps);
     const idleMinMs = Math.max(activeMinMs, 1000 / 24);
-    if ((now - lastRenderAt) < (idleNow ? idleMinMs : activeMinMs)) {
+    const minFrameMs = interacting ? 0 : (idleNow ? idleMinMs : activeMinMs);
+    if ((now - lastRenderAt) < minFrameMs) {
       requestAnimationFrame(frame);
       return;
     }
