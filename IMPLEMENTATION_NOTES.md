@@ -276,6 +276,13 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
 3. **每只一个独立小窗口**：最干净，但等于重写窗口层，风险最高。
 4. **维持现状 + 临时规避**：看视频时关闭「显示小偶像」（无命中矩形 → 窗口保持穿透 → 不黑屏）✓。
 
+**K1 修复后的精度问题与修复（用户实测批）**：
+1. **待机呼吸动画周期性停顿**（严重回归）：**根因** — 重力模式下 `idolPhysicallyBusy()` 每帧在 true/false 间抖动（"下落→落地"高频循环），使帧循环里的 `if (c.physWasBusy && !busy) clearIdolFace(key)` **每帧触发** → 动画被反复重置（探针实测 `trackTime` 恒为 **0.05**、从不增长）。**修**：仅当**当前动画不是"动作_待机"**时才恢复待机。**验证**：修复后探针 `airui=4.01→5.01→…→10.99`（**每秒 +1.0 正常累加**）✓。诊断工具：`QX_ANIMLOG=1`（每秒打印动画时间 + 帧数；并在 `resetIdolIdleState`/`clearIdolFace` 打印调用栈，本次就是靠它抓到 `clearIdolFace at frame`）。
+2. **气泡（popover）漏出窗口区域**：`collectHitRects()` 浮层列表**遗漏 `popover`** → 气泡会被窗口形状裁掉（用户担心的"文本过多超出窗口被裁"确实会发生）。**修**：加入 `popover`。
+3. **甩飞/下落被裁（区域更新跟不上）**：**修** ①renderer 新增 `anyIdolPhysicallyMoving()` 并随 `hit-rects` 上报 `moving`；②物理运动中区域边距用 `REGION_PAD_DRAG(170px)`（平时 32px）；③物理运动中上报频率提到 **50ms**；④拖动/物理运动时把"光标周围 520px 方块"并入区域兜底。
+4. **浮层阴影被裁成硬边**（"奇怪的阴影"）：区域边距 6px → **32px**（覆盖 CSS 阴影扩散）。
+- **可调常量**（`main.js`）：`REGION_PAD_IDLE = 32`、`REGION_PAD_DRAG = 170`；回退开关 `QX_NOREGION=1`。
+
 **✅ 已实施方案（比候选 1 更优）**：**Win32 `SetWindowRgn` 窗口形状收缩**
 - **原理**：保持窗口仍为全屏（渲染不受限），但把"真实存在的窗口区域"收缩为**角色 + 浮层的矩形并集** —— 形状之外**不参与命中也不参与合成** → 视频硬件叠加层（只在角色小块被影响）得以保留 → 不黑屏。
 - **实现**：引入 **koffi**（预编译 FFI，无需编译工具链）调用 `gdi32.CreateRectRgn/CombineRgn`（RGN_OR 并集）+ `user32.SetWindowRgn`；坐标 = `hitRects`（窗口 client CSS px）× `scaleFactor`（物理像素）+ 6px 边距；区域 key 去重避免重复设置；`SetWindowRgn(hwnd, NULL)` 用于清除。
