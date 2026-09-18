@@ -76,16 +76,19 @@
       img.src = src;
     });
   }
-  async function loadIdolAssets(cfg) {
+  async function loadIdolAssets(cfg, key) {
     const atlasText = dk.readText(cfg.atlas);
     const skeletonText = dk.readText(cfg.json);
     const atlas = new spine.TextureAtlas(atlasText);
+    const wraps = [];
     for (const page of atlas.pages) {
       const file = cfg.pages[page.name];
       const img = await loadImage(dk.readImage(file));
       const wrap = gfx.makeTexture(img, gfx.textures.length);
       page.setTexture(wrap);
+      wraps.push(wrap);
     }
+    if (key && idols[key]) idols[key].texWraps = wraps;   // 记录纹理 wrap（隐藏释放/显示恢复用）
     const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(skeletonText);
     return { data, atlas };
   }
@@ -209,6 +212,7 @@
   const clearFaceTimers = {};
   function changeFace(key, poseId) {
     const c = idols[key], cfg = c.cfg;
+    if (!c.state) return false;   // 资源已释放（隐藏优化）：安全兜底
     if (c.poseId !== 0) return false;
     if (c.walking) return false;
     const s = cfg.posTable[poseId];
@@ -223,6 +227,7 @@
   function clearIdolFace(key) {
     const c = idols[key];
     if (clearFaceTimers[key]) { clearTimeout(clearFaceTimers[key]); clearFaceTimers[key] = null; }
+    if (!c.state) { c.poseId = 0; return; }   // 资源已释放（隐藏优化）：安全兜底
     c.state.setAnimation(0, '动作_待机', true);
     c.state.setAnimation(1, '表情_常态', true);
     c.poseId = 0;
@@ -545,14 +550,89 @@
     c.state.setAnimation(0, '动作_待机', true);
     c.state.setAnimation(1, '表情_常态', true);
   }
+  // ---- 隐藏角色释放资源（内存优化；显示时按需恢复）----
+  // 释放内容：GPU 纹理内容（deleteTexture，wrap 占位保留 → 渲染器索引不错位）、
+  // CPU 侧解码图、骨架数据、Skeleton/AnimationState 运行时对象。
+  // 保留：container/dir/poseId/cfg/texWraps 等轻量状态，恢复后位置与朝向不变。
+  const NORELEASE = dk.env('QX_NORELEASE') === '1';   // 排查用：禁用释放
+  const releaseTimers = {};
+  function releaseIdolAssets(key) {
+    const c = idols[key];
+    if (!c || !c.data) return;
+    try {
+      for (const w of (c.texWraps || [])) { if (w && w.dispose) w.dispose(); }
+      c.data = null;
+      c.skeleton = null;
+      c.state = null;
+      console.log('[RELEASE] freed assets of', key);
+    } catch (e) { console.log('[RELEASE] failed', key, e && e.message); }
+  }
+  function scheduleReleaseIdol(key) {
+    if (NORELEASE) return;
+    if (releaseTimers[key]) clearTimeout(releaseTimers[key]);
+    releaseTimers[key] = setTimeout(() => {   // 延迟释放：避免快速反复切换时的抖动/竞态
+      releaseTimers[key] = null;
+      if (idols[key] && idols[key].hidden) releaseIdolAssets(key);
+    }, 800);
+  }
+  function cancelReleaseIdol(key) {
+    if (releaseTimers[key]) { clearTimeout(releaseTimers[key]); releaseTimers[key] = null; }
+  }
+  async function restoreIdolAssets(key) {
+    const c = idols[key];
+    if (c.data) return true;
+    try {
+      const cfg = ROLES[key];
+      const atlasText = dk.readText(cfg.atlas);
+      const skeletonText = dk.readText(cfg.json);
+      const atlas = new spine.TextureAtlas(atlasText);
+      c.texWraps = c.texWraps || [];
+      let i = 0;
+      for (const page of atlas.pages) {
+        const file = cfg.pages[page.name];
+        const img = await loadImage(dk.readImage(file));
+        let w = c.texWraps[i];
+        if (w) { w.upload(img); }                                  // 复用同一 wrap（索引不变）
+        else { w = gfx.makeTexture(img, gfx.textures.length); c.texWraps[i] = w; }
+        page.setTexture(w);
+        i++;
+      }
+      const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(skeletonText);
+      initIdol(key, data);                                          // 重建 skeleton/state/combo skin + 待机动画
+      setComboSkin(key, c.dir === -1 ? -1 : 1);                     // 恢复朝向皮肤
+      console.log('[RELEASE] restored assets of', key);
+      return true;
+    } catch (e) {
+      console.log('[RELEASE] restore failed', key, e && e.message);
+      return false;
+    }
+  }
+
   function setIdolVisibility(key, on) {
     const c = idols[key];
     if (!c) return;
-    c.hidden = !on;
+    if (on) {
+      cancelReleaseIdol(key);
+      if (!c.data) {
+        // 资源已被释放：异步恢复 → 完成后再显示（恢复期间保持 hidden，避免访问空 state）
+        restoreIdolAssets(key).then((ok) => {
+          if (!ok) return;
+          c.hidden = false;
+          resetIdolIdleState(key);
+          refreshMouseIgnore();
+        });
+        dk.sendHitRects(collectHitRects(), false, mouseEventCount);   // 立即同步一次命中矩形
+        return;
+      }
+      c.hidden = false;
+    } else {
+      c.hidden = true;
+    }
     // 显隐都重置为干净待机：隐藏=收起；显示=醒来（从头待机）——
     // 修复"隐藏时正播姿势动画→显示后 poseId 未清，changeFace/moveIdol/tryBubble 全部被
     // poseId!==0 拦死，角色永久卡在该姿势、不再触发任何待机动画"
     resetIdolIdleState(key);
+    if (!on) scheduleReleaseIdol(key);   // 隐藏后延迟释放内存
     // 全部隐藏：顺手收起浮动 UI（避免"空窗口里飘着菜单/面板/对话框"）
     if (ROLE_KEYS.every((k) => idols[k].hidden)) {
       hideCtxMenu(); hideSizePanel(); hideFreqPanel(); hideVolPanel(); hideMusicPanel();
@@ -571,6 +651,7 @@
     const p = MOTION_POSES[phase] && MOTION_POSES[phase][key];
     if (!p) return;
     const c = idols[key];
+    if (!c.state) return;   // 资源已释放（隐藏优化）：安全兜底
     c.state.setAnimation(0, '动作_' + p[0], true);
     c.state.setAnimation(1, '表情_' + (p[1] || p[0]), true);
   }
@@ -1471,6 +1552,7 @@
     const p = MOOD_POSES[mood] && MOOD_POSES[mood][role];
     if (!p || !idols[role]) return;
     const c = idols[role];
+    if (!c.state) return;   // 资源已释放（隐藏优化）：安全兜底
     c.state.setAnimation(0, '动作_' + p[0], true);
     c.state.setAnimation(1, '表情_' + (p[1] || p[0]), true);
     if (moodTimer) clearTimeout(moodTimer);
@@ -2232,7 +2314,7 @@
         renderPaused = false;
         lastTime = 0;                        // 重置计时，避免恢复瞬间 dt 过大
         console.log('[RENDER] resumed');
-        requestAnimationFrame(frame);
+        requestAnimationFrame(frameSafe);
       }
     });
   } catch (e) { /* noop */ }
@@ -2251,7 +2333,7 @@
     const lines = ['f=' + frameCount + ' mode=' + freq.dialogMode + ' view=' + viewW + 'x' + viewH + '@' + dpr + ' grav=' + gravityOn];
     for (const key of ROLE_KEYS) {
       const c = idols[key];
-      const t0 = c.state.tracks[0];
+      const t0 = c.state ? c.state.tracks[0] : null;   // 资源已释放（隐藏优化）时 state 为 null
       lines.push(`${key}: ${c.container.x.toFixed(0)},${c.container.y.toFixed(0)} dir=${c.dir} walk=${c.walking}` +
         ` pose=${c.poseId} hid=${c.hidden ? 1 : 0} fz=${chatFrozen[key] ? 1 : 0} t0=${t0 ? t0.animation.name + '@' + t0.trackTime.toFixed(2) : '-'}`);
     }
@@ -2286,8 +2368,7 @@
     const idleMinMs = Math.max(activeMinMs, 1000 / 24);
     const minFrameMs = interacting ? 0 : (idleNow ? idleMinMs : activeMinMs);
     if ((now - lastRenderAt) < minFrameMs) {
-      requestAnimationFrame(frame);
-      return;
+      return;   // 跳帧：rAF 链由 frameSafe 统一续接
     }
     const dt = Math.min(0.05, (now - lastRenderAt) / 1000 || 0.016);
     lastRenderAt = now;
@@ -2300,7 +2381,7 @@
 
     for (const key of ROLE_KEYS) {
       const c = idols[key];
-      if (c.hidden) continue;   // 隐藏（休息）：不渲染/不更新/不物理
+      if (c.hidden || !c.state) continue;   // 隐藏（休息）/ 资源已释放：不渲染/不更新/不物理
       if (c.walkTween) {
         const k = (now - c.walkTween.start) / c.walkTween.dur;
         if (k >= 1) { c.walkTween.update(1); c.walkTween.done(); }
@@ -2324,14 +2405,23 @@
     placePopover();
     positionBubbleChat();   // 气泡聊天：输入框跟随角色
     if (frameCount % 10 === 0) updateHud();
-    requestAnimationFrame(frame);
+  }
+  // 帧循环安全入口：任何未预期异常都不能中断 rAF 链（否则整个桌宠会永久冻结）。
+  // 所有 rAF 续接统一走这里（frame 内部不再自行注册），避免双注册导致帧率翻倍。
+  function frameSafe(now) {
+    try {
+      frame(now);
+    } catch (e) {
+      console.log('GLOBAL_ERROR: frame', e && e.message);
+    }
+    if (!renderPaused) requestAnimationFrame(frameSafe);
   }
 
   // ================= 启动 =================
   async function boot() {
     // 三角色素材
     for (const key of ROLE_KEYS) {
-      const { data } = await loadIdolAssets(ROLES[key]);
+      const { data } = await loadIdolAssets(ROLES[key], key);
       initIdol(key, data);
     }
 
@@ -2386,7 +2476,7 @@
       if (qs.get('anim1') || dk.env('QX_ANIM1')) c.state.setAnimation(1, qs.get('anim1') || dk.env('QX_ANIM1'), true);
     }
 
-    requestAnimationFrame(frame);
+    requestAnimationFrame(frameSafe);
     // 启动音（首次渲染完成 ~400ms 后）
     setTimeout(() => playSfxFile(AUDIO_FILES.boot), 400);
     // 恢复上次的 BGM 播放状态（bgmOn 记忆为开时自动继续播放，与播放器按钮状态一致）
@@ -2414,6 +2504,11 @@
     }, 800);
 
     // debug 入口
+    if (dk.env('QX_HIDETEST') === '1') {
+      // 隐藏→释放资源→显示→恢复：验证"释放纹理"优化（6s 隐藏千夏，14s 显示回来）
+      setTimeout(() => { console.log('[HIDETEST] hide qianxia'); setIdolVisibility('qianxia', false); }, 6000);
+      setTimeout(() => { console.log('[HIDETEST] show qianxia'); setIdolVisibility('qianxia', true); }, 14000);
+    }
     if (dk.env('QX_CHATTEST') === '1') {
       setTimeout(() => { startChatter(['qianxia', 'nangong']); }, 2000);
     }

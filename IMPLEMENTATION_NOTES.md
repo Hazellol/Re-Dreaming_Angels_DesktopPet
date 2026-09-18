@@ -199,6 +199,15 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     1. **③ 特性裁剪扩充**：`disable-features` 由 8 项扩到 **18 项**（新增 BackForwardCache / SpareRendererForSitePerProcess / WebRtcHideLocalIpsWithMdns / MediaRouter / DialMediaRouteProvider / PictureInPicture / PushMessaging / NotificationTriggers / AutofillCreditCardUpload / AutofillEnableAccountWalletStorage / OptimizationGuideModelDownloading）——全部是桌面宠物完全不使用的浏览器功能。**实测**：无任何报错、内存改善不明显（这些服务原本按需启动，属"保留无害"）。
     2. **④ 暂停渲染时降频**：被完全覆盖（`occluded`）期间，主进程鼠标轮询 **70→300ms**、renderer 可交互矩形上报 **150→1000ms**；恢复路径不受影响（快捷键/托盘/浮层打开走 `force=true` 立即上报并解除暂停）。
     3. **功能回归验证**（改完必跑）：默认启动+BGM 播放（无媒体/JS 错误）✓；三只渲染 ✓；右键菜单（含新增「🔧 打开控制台」）✓；聊天面板与气泡 ✓；控制台截图 ✓ —— **零回归**。
+29. **优化 ①：隐藏角色释放纹理/骨架（实测省 31MB/只）**：
+    **背景**：控制台关掉某只 = 逻辑隐藏（不渲染），但她的 GPU 纹理、CPU 侧解码图、骨架数据仍常驻内存。
+    **实现**：
+    - `spine-gfx.js` 的纹理 wrap 重构为 `upload(img)` / `dispose()`：**wrap 对象与 `pageIndex` 永不变**（渲染器用 `this.textures[pageIndex]` 绑定，若删除/移动数组元素会导致**其它角色画错纹理**），释放只删 GL 纹理内容与 CPU 侧 image，恢复时复用同一 wrap 重新上传。
+    - renderer 新增 `releaseIdolAssets(key)`（纹理 + 骨架 data + Skeleton/AnimationState）/ `restoreIdolAssets(key)`（复用 wrap 重新上传 + `initIdol` 重建运行时 + 恢复朝向皮肤）/ `scheduleReleaseIdol`（**延迟 800ms** 释放，避免快速反复切换的竞态与抖动）。
+    - `setIdolVisibility`：隐藏 → 先 `resetIdolIdleState`（state 还在）再排队释放；显示 → 若资源已释放则**异步恢复完成后才解除 hidden**（恢复期间保持隐藏，避免访问空 state）。`QX_NORELEASE=1` 可禁用释放、`QX_HIDETEST=1` 自动跑"隐藏→释放→显示→恢复"。
+    - **防御保护**：`resetIdolIdleState` / `changeFace` / `clearIdolFace` / `playMotion` / `applyMoodPose` 与帧循环均加 `!c.state` 兜底。
+    **踩坑（自测抓到，非常重要）**：`updateHud()` 里 `c.state.tracks[0]` 未判空 → 释放后抛 `Cannot read properties of null` → **异常中断帧循环末尾的 `requestAnimationFrame` → 整个桌宠永久冻结**。修：①HUD 判空；②**新增帧循环安全入口 `frameSafe()`**（try/catch + 统一续接 rAF，`frame()` 内部不再自行注册，避免双注册帧率翻倍）——从此任何未预期异常都不会冻结桌宠。
+    **实测**：`[HIDETEST] hide qianxia` → `[RELEASE] freed assets of qianxia` → 内存 **638.5MB → 607.1MB（-31.4MB）**；`show qianxia` → `[RELEASE] restored assets of qianxia` → 643MB（回到正常，无泄漏）；HUD `qianxia: hid=0 t0=动作_待机@81.22`、`f` 持续增长（**未冻结**）；无 `GLOBAL_ERROR`。**三只全隐藏可省约 90MB**。
 
 ---
 

@@ -99,23 +99,35 @@
 
     makeTexture(image, pageIndex) {
       const gl = this.gl;
-      // Chromium 解码 WebP/PNG 输出预乘 alpha 数据 → 上传时保持预乘，混合用 (ONE, ONE_MINUS_SRC_ALPHA)
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-      const t = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, t);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       const wrap = {
-        glTexture: t,
+        glTexture: null,
         pageIndex,
-        image,
+        image: null,
         setFilters() {},
         setWraps() {},
-        dispose() { gl.deleteTexture(t); }
+        // 上传/重新上传纹理内容（wrap 对象与 pageIndex **保持不变**——渲染器用
+        // this.textures[pageIndex] 索引绑定，释放后重建若改变数组位置会导致其它角色画错）
+        upload(img) {
+          // Chromium 解码 WebP/PNG 输出预乘 alpha 数据 → 上传时保持预乘，混合用 (ONE, ONE_MINUS_SRC_ALPHA)
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+          if (this.glTexture) gl.deleteTexture(this.glTexture);
+          const t = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          this.glTexture = t;
+          this.image = img;
+        },
+        // 释放：删除 GL 纹理 + 释放 CPU 侧解码图（wrap 仍留在 textures 数组里占位）
+        dispose() {
+          if (this.glTexture) { try { gl.deleteTexture(this.glTexture); } catch (e) { /* noop */ } this.glTexture = null; }
+          this.image = null;
+        }
       };
+      wrap.upload(image);
       this.textures.push(wrap);
       return wrap;
     }
