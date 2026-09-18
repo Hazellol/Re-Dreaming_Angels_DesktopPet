@@ -170,6 +170,17 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
        - **Chromium 特性裁剪**：`disable-features` 合并为单次 switch（CalculateNativeWinOcclusion + MediaSessionService + HardwareMediaKeyHandling + GlobalMediaControls + Translate + AutofillServerCommunication + OptimizationHints + InterestFeedContentSuggestions）。
     **实测对比**（同一台机器、同场景）：进程 **6 → 5**；工作集 **679.9MB → ~590MB（-90MB，-13%）**；空闲 CPU（10s 窗口）**4.73s → 4.11s**（空闲降帧在真正静止时收益更大；她们走动/冒泡时会满帧，故平均值改善有限）。音频无媒体加载错误 ✓ 控制台勾选框截图验证 ✓。
     **后续可选**（未做）：①"完全静止时暂停 Spine 动画 + 停止渲染"（CPU 可再近 0，代价是视觉完全静止，建议做成选项）；②隐藏角色释放纹理；③`--js-flags=--max-old-space-size=192`。
+24. **右键控制台入口 + 设置页最大帧率 + 被完全覆盖时暂停渲染（用户需求批）**：
+    1. **右键菜单新增「🔧 打开控制台」**（与"退出桌宠"同行）→ `dk.openPanel()`（懒加载创建）。
+    2. **控制台新增"⚙ 设置"页**（左侧栏第三个图标）：**最大帧率**滑块（15~144，默认 60）+ 预设（30 省电 / 60 默认 / 120 丝滑）。持久化 `QX_MAXFPS`（localStorage，panel/renderer 同源共享），改动经 `set-max-fps` IPC → 主进程广播 `max-fps` → 桌宠**立即生效**。
+    3. **渲染帧率统一节流**：帧循环用 `activeMinMs = 1000/maxFps`；空闲时 `idleMinMs = max(active, 1000/24)`（普通待机自动降到 ~24fps）。
+    4. **被其它窗口完全覆盖 → 暂停渲染（用户明确要求）**：
+       - 主进程每 **3s** 调 `scripts/occlusion_check.ps1`（**传入本窗口句柄**，避免 PS 5.1 读取 UTF-8 中文乱码导致"找不到窗口"——首版即踩此坑）→ 判断"z-order 在其上方的可见窗口是否完全覆盖（±10px 或面积 ≥98%）"→ 变化时通过 `occluded` IPC 通知 renderer；
+       - renderer 收到暂停 → `frame()` 直接 return（**停止 rAF 链**，渲染完全停止）；恢复 → `lastTime=0` 重置计时后重启 rAF（避免 dt 跳变）；
+       - 恢复路径：遮挡检测（≤3s）/ 用户交互（`hitForceInteractive`）。
+       - **踩坑记录**：①"鼠标在她们区域内就解除暂停"是错的——被覆盖时鼠标坐标同样落在其矩形上（视觉不可见），会导致"刚暂停就恢复"；已删除，恢复只走遮挡检测。②`cover_window.ps1` 默认仅保持 3s，测试时需 `-HoldMs` 拉长才能观察到暂停效果。
+    **实测**（QX_NOTOP=1 + 全屏覆盖窗口 22s）：日志 `[OCC-DBG] hwnd=… → OCCLUDED=1` → `[OCCLUSION] fully covered → pause rendering` → 暂停期间 **CPU 增量 2.56s/10s**（对照未暂停 **4.0~4.7s**，**降约 40%**；剩余为 Chromium 基础开销与遮挡检测本身）→ 覆盖结束后 `[OCCLUSION] visible → resume rendering` ✓。
+    **进一步可省**（未做）：暂停期间把鼠标轮询 70→200ms、rects 上报 150→1000ms（可再降一部分常驻开销）。
 
 ---
 

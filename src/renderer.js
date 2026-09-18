@@ -1354,6 +1354,7 @@
       try { localStorage.setItem('QX_TOPMOST', topmostOn ? '1' : '0'); } catch (err) { /* noop */ }
       dk.setTopmost(topmostOn);
     }
+    else if (act === 'console') dk.openPanel();   // 打开控制台（按需创建）
     else if (act === 'quit') dk.quit();
   });
   // 菜单项悬停音效（mouseenter 每项触发一次）
@@ -2205,6 +2206,30 @@
   let lastTime = 0;
   let frameCount = 0;
   let lastRenderAt = 0;   // 空闲降帧用：上次实际渲染时间
+  // 最大帧率（设置页可调，默认 60；localStorage 持久化 + 主进程广播实时生效）
+  let maxFps = 60;
+  try { maxFps = Math.min(144, Math.max(15, parseInt(localStorage.getItem('QX_MAXFPS'), 10) || 60)); } catch (e) { /* noop */ }
+  try {
+    dk.onMaxFps((v) => {
+      maxFps = Math.min(144, Math.max(15, parseInt(v, 10) || 60));
+      console.log('[RENDER] max fps →', maxFps);
+    });
+  } catch (e) { /* noop */ }
+  // 被其它窗口完全覆盖 → 暂停渲染（主进程遮挡检测；鼠标靠近她们时会立即恢复）
+  let renderPaused = false;
+  try {
+    dk.onOccluded((occ) => {
+      if (occ && !renderPaused) {
+        renderPaused = true;
+        console.log('[RENDER] paused (fully covered by another window)');
+      } else if (!occ && renderPaused) {
+        renderPaused = false;
+        lastTime = 0;                        // 重置计时，避免恢复瞬间 dt 过大
+        console.log('[RENDER] resumed');
+        requestAnimationFrame(frame);
+      }
+    });
+  } catch (e) { /* noop */ }
   // 是否有任何浮层打开（空闲降帧判断用）
   function isAnyOverlayOpen() {
     const els = [ctxMenu, sizePanel, freqPanel, volPanel, musicPanel, chatterPanel, cpEl, bcEl, bcHist, inputCtx];
@@ -2227,6 +2252,7 @@
     hud.textContent = lines.join('\n');
   }
   function frame(now) {
+    if (renderPaused) return;   // 被完全覆盖：停止 rAF 链（渲染完全暂停，CPU 接近 0）
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
     lastTime = now;
     frameCount++;
@@ -2244,7 +2270,10 @@
         if (c.hidden) return false;
         return !!c.walkTween || c.poseId !== 0 || idolPhysicallyBusy(k);
       });
-    if (idleNow && (now - lastRenderAt) < 40) {   // 40ms ≈ 24fps
+    // ===== 帧率限制（用户设置的"最大帧率"，默认 60；空闲时自动降到 ~24fps）=====
+    const activeMinMs = 1000 / maxFps;
+    const idleMinMs = Math.max(activeMinMs, 1000 / 24);
+    if ((now - lastRenderAt) < (idleNow ? idleMinMs : activeMinMs)) {
       requestAnimationFrame(frame);
       return;
     }

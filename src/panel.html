@@ -217,6 +217,12 @@
           <circle cx="16" cy="11" r="1" fill="currentColor" stroke="none"/>
         </svg>
       </div>
+      <div class="sidebar-btn" id="btn-settings" title="设置">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2"/>
+          <path d="M12 2.5 V5.5 M12 18.5 V21.5 M2.5 12 H5.5 M18.5 12 H21.5 M5.2 5.2 L7.3 7.3 M16.7 16.7 L18.8 18.8 M18.8 5.2 L16.7 7.3 M7.3 16.7 L5.2 18.8"/>
+        </svg>
+      </div>
     </div>
     <div id="content">
       <!-- 主页视图 -->
@@ -310,6 +316,27 @@
             <button class="ai-btn small" id="ai-clear-3">清空千夏历史</button>
           </div>
           <div id="ai-test-rslt"></div>
+        </div>
+      </div>
+      <!-- 设置视图 -->
+      <div id="view-settings" class="view" style="display:none;">
+        <div class="ai-card">
+          <h3>⚙ 性能设置</h3>
+          <div class="ai-row">
+            <label>最大帧率</label>
+            <input type="range" id="set-maxfps" min="15" max="144" step="1" value="60" style="flex:1;accent-color:#e0559a;">
+            <span class="ai-val" id="set-maxfps-val">60 fps</span>
+          </div>
+          <div class="ai-btns" id="set-fps-presets" style="margin-top:6px;">
+            <button class="ai-btn small fps-preset" data-fps="30">30 fps（省电）</button>
+            <button class="ai-btn small fps-preset" data-fps="60">60 fps（默认）</button>
+            <button class="ai-btn small fps-preset" data-fps="120">120 fps（丝滑）</button>
+          </div>
+          <div class="ai-hint" style="margin-top:8px;line-height:1.8;">
+            · 桌宠平时按此帧率渲染（默认 60）；三只都在普通待机时会自动降到 ~24fps 进一步省电<br>
+            · 她们被其它窗口**完全覆盖**时，会自动**暂停渲染**（CPU 接近 0），覆盖消失后立即恢复<br>
+            · 调低帧率可显著降低 CPU/GPU 占用；调高更丝滑（对显卡压力更大）
+          </div>
         </div>
       </div>
     </div>

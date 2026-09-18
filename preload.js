@@ -136,6 +136,10 @@ contextBridge.exposeInMainWorld('deskpet', {
   getIdolsShown: () => ipcRenderer.invoke('get-idols-shown'),
   setIdolsShown: (shown) => ipcRenderer.invoke('set-idols-shown', shown),
   onIdolsShown: (cb) => ipcRenderer.on('idols-shown', (e, on) => cb(on)),
+  // 最大帧率（设置页 → 主进程广播给桌宠窗口）
+  setMaxFps: (v) => ipcRenderer.send('set-max-fps', v),
+  onMaxFps: (cb) => ipcRenderer.on('max-fps', (e, v) => cb(v)),
+  onOccluded: (cb) => ipcRenderer.on('occluded', (e, v) => cb(v)),
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),
   setMouseIgnore: (ignore) => ipcRenderer.send('set-mouse-ignore', ignore),

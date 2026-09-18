@@ -10,25 +10,72 @@
   const state = { airui: true, qianxia: true, nangong: true };
   const KEYS = ['airui', 'nangong', 'qianxia'];
 
-  // ================= 视图切换（主页 / 对话配置） =================
+  // ================= 视图切换（主页 / 对话配置 / 设置） =================
   const viewHome = document.getElementById('view-home');
   const viewAi = document.getElementById('view-ai');
+  const viewSettings = document.getElementById('view-settings');
   const btnHome = document.getElementById('btn-home');
   const btnAi = document.getElementById('btn-ai');
+  const btnSettings = document.getElementById('btn-settings');
   const tTitle = document.getElementById('t-title');
   const tSub = document.getElementById('t-sub');
-  function showView(ai) {
-    viewHome.style.display = ai ? 'none' : 'block';
-    viewAi.style.display = ai ? 'block' : 'none';
-    btnHome.classList.toggle('active', !ai);
-    btnAi.classList.toggle('active', ai);
-    tTitle.textContent = ai ? '💬 妄想天使 · 对话配置' : '🎀 妄想天使 · 控制台';
-    tSub.textContent = ai ? 'DeepSeek AI 聊天设置（三小只会按各自人设和你聊天～）' : '分别控制三小只的桌宠开关（关掉后她会去休息哦～）';
-    const v = ai ? viewAi : viewHome;
-    v.classList.remove('view-swap'); void v.offsetWidth; v.classList.add('view-swap');
+  // view: 'home' | 'ai' | 'settings'
+  function showView(view) {
+    viewHome.style.display = view === 'home' ? 'block' : 'none';
+    viewAi.style.display = view === 'ai' ? 'block' : 'none';
+    if (viewSettings) viewSettings.style.display = view === 'settings' ? 'block' : 'none';
+    btnHome.classList.toggle('active', view === 'home');
+    btnAi.classList.toggle('active', view === 'ai');
+    if (btnSettings) btnSettings.classList.toggle('active', view === 'settings');
+    if (view === 'ai') {
+      tTitle.textContent = '💬 妄想天使 · 对话配置';
+      tSub.textContent = 'DeepSeek AI 聊天设置（三小只会按各自人设和你聊天～）';
+    } else if (view === 'settings') {
+      tTitle.textContent = '⚙ 妄想天使 · 设置';
+      tSub.textContent = '性能与显示选项（帧率等；改动立即生效）';
+    } else {
+      tTitle.textContent = '🎀 妄想天使 · 控制台';
+      tSub.textContent = '分别控制三小只的桌宠开关（关掉后她会去休息哦～）';
+    }
+    const v = view === 'ai' ? viewAi : (view === 'settings' ? viewSettings : viewHome);
+    if (v) { v.classList.remove('view-swap'); void v.offsetWidth; v.classList.add('view-swap'); }
   }
-  btnHome.addEventListener('click', () => showView(false));
-  btnAi.addEventListener('click', () => showView(true));
+  btnHome.addEventListener('click', () => showView('home'));
+  btnAi.addEventListener('click', () => showView('ai'));
+  if (btnSettings) btnSettings.addEventListener('click', () => showView('settings'));
+
+  // ================= 设置页：最大帧率（限制桌宠渲染帧率，默认 60） =================
+  const elMaxFps = document.getElementById('set-maxfps');
+  const elMaxFpsVal = document.getElementById('set-maxfps-val');
+  const FPS_MIN = 15, FPS_MAX = 144;
+  function loadMaxFps() {
+    let v = 60;
+    try { v = parseInt(localStorage.getItem('QX_MAXFPS'), 10) || 60; } catch (e) { /* noop */ }
+    v = Math.min(FPS_MAX, Math.max(FPS_MIN, v));
+    if (elMaxFps) elMaxFps.value = v;
+    if (elMaxFpsVal) elMaxFpsVal.textContent = v + ' fps';
+    return v;
+  }
+  function saveMaxFps(v) {
+    v = Math.min(FPS_MAX, Math.max(FPS_MIN, v));
+    try { localStorage.setItem('QX_MAXFPS', String(v)); } catch (e) { /* noop */ }
+    try { dk.setMaxFps(v); } catch (e) { /* noop */ }   // 主进程广播 → 桌宠立即应用
+    if (elMaxFpsVal) elMaxFpsVal.textContent = v + ' fps';
+  }
+  loadMaxFps();
+  if (elMaxFps) {
+    elMaxFps.addEventListener('input', () => {
+      if (elMaxFpsVal) elMaxFpsVal.textContent = elMaxFps.value + ' fps';
+    });
+    elMaxFps.addEventListener('change', () => saveMaxFps(parseInt(elMaxFps.value, 10) || 60));
+  }
+  document.querySelectorAll('#set-fps-presets .fps-preset').forEach((el) => {
+    el.addEventListener('click', () => {
+      const v = parseInt(el.getAttribute('data-fps'), 10) || 60;
+      if (elMaxFps) elMaxFps.value = v;
+      saveMaxFps(v);
+    });
+  });
 
   // ================= 三小只开关卡片 =================
   const cardsEl = document.getElementById('cards');

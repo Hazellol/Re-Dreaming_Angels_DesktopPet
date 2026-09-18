@@ -126,6 +126,50 @@ function startMousePoll() {
   mousePollTimer = setInterval(mousePollTick, 70);
 }
 
+// ===== 遮挡检测：被其它窗口完全覆盖时暂停渲染（用户要求的省电优化）=====
+// 用 powershell 每 5s 枚举上层可见窗口，判断桌宠窗口矩形是否被完全覆盖。
+// 恢复路径有两条（避免"用户切回来却还在暂停"）：①下一轮检测发现可见；②**鼠标进入她们区域**（主进程轮询已知）立即恢复。
+let occluded = false;
+let occTimer = null;
+let occBusy = false;
+function setOccluded(v) {
+  if (v === occluded) return;
+  occluded = v;
+  console.log('[OCCLUSION]', v ? 'fully covered → pause rendering' : 'visible → resume rendering');
+  try { if (win && !win.isDestroyed()) win.webContents.send('occluded', v); } catch (e) { /* noop */ }
+}
+function checkOcclusion() {
+  if (occBusy || !win || win.isDestroyed()) return;
+  // 安全阀：只在"用户确实在交互"（拖动/编辑等）时强制视为可见——此时绝不暂停渲染。
+  // ⚠️ 不能用"鼠标在她们区域内"判定：被覆盖时鼠标坐标同样会落在她们矩形上（视觉上并不可见）。
+  if (hitForceInteractive) { setOccluded(false); return; }
+  let hwndStr = '0';
+  try {
+    // 直接把本窗口句柄交给脚本（避免脚本靠窗口标题匹配——PS 5.1 读取 UTF-8 中文会乱码）
+    const buf = win.getNativeWindowHandle();
+    const hwnd = (buf.length >= 8) ? Number(buf.readBigUInt64LE(0)) : buf.readUInt32LE(0);
+    hwndStr = String(hwnd);
+  } catch (e) { /* noop */ }
+  occBusy = true;
+  execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'occlusion_check.ps1'), '-Hwnd', hwndStr],
+    { timeout: 6000, windowsHide: true }, (err, stdout) => {
+      occBusy = false;
+      if (err || !stdout) {
+        if (POLL_LOG) console.log('[OCC-DBG] exec err=', err && err.message, 'hwnd=', hwndStr);
+        return;
+      }
+      const line = String(stdout).trim().split(/\r?\n/).pop() || '';
+      if (POLL_LOG) console.log('[OCC-DBG] hwnd=' + hwndStr + ' → ' + line);
+      if (line.indexOf('OCCLUDED=') !== 0) return;
+      setOccluded(line.indexOf('OCCLUDED=1') === 0);
+    });
+}
+function startOcclusionWatch() {
+  if (occTimer) clearInterval(occTimer);
+  occTimer = setInterval(checkOcclusion, 3000);   // 3s 一轮：恢复延迟 ≤3s，开销可接受
+  setTimeout(checkOcclusion, 2500);
+}
+
 // ===== 拖动状态守护（针对"截图工具吞掉 mouseup"造成点击全面失效的兜底）=====
 // 原理：交叉验证"物理按键状态"与"我们以为的拖动状态"。
 //   · renderer 报告拖动中，但系统物理左键已松开（GetAsyncKeyState）→ mouseup 丢失，拖动状态卡死 → 立即清理
@@ -293,6 +337,8 @@ function mousePollTick() {
     }
   }
   mousePollTicks++;
+  // 注意：**不能**用"鼠标在她们区域内"来解除遮挡暂停——被覆盖时鼠标坐标同样落在她们矩形上，
+  // 但视觉上并不可见（早期版本据此解除，导致"刚暂停就恢复"）。恢复只走遮挡检测（≤3s）或用户交互。
   // 每 ~1s 强制重下发一次：幂等操作，用于修复被其它程序（截图工具/捕获鼠标）扰动后的平台状态漂移
   const force = (mousePollTicks % 15 === 0);
   if (inside === mousePollInside && !force) return;
@@ -343,6 +389,7 @@ function createWindow() {
   // 被其他窗口覆盖/被 SetCapture（QQ 截图等）接管时窗口收不到鼠标消息会永久死锁，用户实测）
   win.setIgnoreMouseEvents(true, { forward: true });
   startMousePoll();
+  startOcclusionWatch();
 
   // 调试截图参数：electron . --screenshot [delayMs] ["anim0=动作_X&anim1=表情_Y"]
   const shotArg = process.argv.indexOf('--screenshot');
@@ -548,6 +595,11 @@ app.whenReady().then(() => {
   ipcMain.on('open-panel', () => ensurePanel());
   ipcMain.handle('get-idols-shown', () => !idolsAllHidden);
   ipcMain.handle('set-idols-shown', (e, shown) => setIdolsShown(!!shown));
+  // 最大帧率（设置页改动 → 广播给桌宠窗口；持久化在 localStorage 由两端各自读写）
+  ipcMain.on('set-max-fps', (e, v) => {
+    const fps = Math.min(144, Math.max(15, parseInt(v, 10) || 60));
+    if (win && !win.isDestroyed() && win.webContents) win.webContents.send('max-fps', fps);
+  });
   // 控制台「保存配置」→ 通知主窗立即热更新（AI 配置变化由 QX_AI/样式等统一走保存按钮）
   ipcMain.on('ai-config-saved', () => {
     if (win && !win.isDestroyed() && win.webContents) win.webContents.send('ai-config-refresh');
