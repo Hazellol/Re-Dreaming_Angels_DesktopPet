@@ -104,7 +104,7 @@ function setInterimTop(on) {
   }
   try { win.moveTop(); } catch (e) { /* noop */ }
   if (interimTopTimer) clearTimeout(interimTopTimer);
-  interimTopTimer = setTimeout(() => { interimTopTimer = null; setInterimTop(false); }, 2600);   // 无交互 2.6s 后恢复用户设置
+  interimTopTimer = setTimeout(() => { interimTopTimer = null; setInterimTop(false); }, 5000);   // 主动救援后保持 5s 可交互，随后恢复用户设置
 }
 
 function startMousePoll() {
@@ -221,7 +221,10 @@ function applyMouseIgnore(inside, cx, cy, why) {
       win.setIgnoreMouseEvents(!inside ? false : true, { forward: true });
     }
     win.setIgnoreMouseEvents(!inside, { forward: true });
-    if (inside) setInterimTop(true);   // 交互时临时置顶：否则点击会被上层窗口吃掉（含被覆盖/截图工具后的场景）
+    // ⚠️ 这里**刻意不做"悬停临时置顶"**：关闭"保持置顶"的语义就是"不抢层级、可以被别的窗口盖住"。
+    // 早期为了修"被覆盖无法点击"曾在此处 setInterimTop(true)，副作用是"鼠标一经路过她们就自动浮出、
+    // 用户聚焦别的窗口时她们也不被覆盖"（用户实测反馈）。现在改为：只有**用户主动救援**
+    // （全局快捷键 / 托盘点击 / 托盘菜单「提到最前」）才会临时置顶。
     if (POLL_LOG) {
       let hit = '';
       if (inside && hitRects.length) {
@@ -465,7 +468,7 @@ app.whenReady().then(() => {
     tray = new Tray(appIcon(32));
     tray.setToolTip('妄想天使桌宠（点击提到最前）');
     rebuildTrayMenu();
-    tray.on('click', () => bringPetToFrontTemporarily(1800));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
+    tray.on('click', () => bringPetToFrontTemporarily(5000));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
   } catch (e) { console.error('tray init failed', e); }
   // 全局快捷键：把三小只提到最前（未置顶被覆盖/被截图工具接管时的救援入口）
   // ⚠️ globalShortcut 需独占注册：被其他软件占用会返回 false → 依次尝试候选，成功即用并告知 UI
@@ -473,7 +476,7 @@ app.whenReady().then(() => {
   activeHotkey = null;
   for (const hk of HOTKEY_CANDIDATES) {
     try {
-      if (globalShortcut.register(hk, () => bringPetToFrontTemporarily(1800))) { activeHotkey = hk; break; }
+      if (globalShortcut.register(hk, () => bringPetToFrontTemporarily(5000))) { activeHotkey = hk; break; }
     } catch (e) { /* try next */ }
   }
   console.log('[HOTKEY] active =', activeHotkey || '(none)');
@@ -739,7 +742,7 @@ app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch (e) { 
 function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '📌 把三小只提到最前', click: () => bringPetToFrontTemporarily(1800) },
+    { label: '📌 把三小只提到最前', click: () => bringPetToFrontTemporarily(5000) },
     { label: '打开控制面板', click: () => { if (panel && !panel.isDestroyed()) panel.show(); else createPanelWindow(); } },
     { label: '显示/隐藏小偶像', click: () => toggleMainWindow() },
     { type: 'separator' },
