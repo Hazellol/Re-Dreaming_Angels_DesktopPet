@@ -208,6 +208,16 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     - **防御保护**：`resetIdolIdleState` / `changeFace` / `clearIdolFace` / `playMotion` / `applyMoodPose` 与帧循环均加 `!c.state` 兜底。
     **踩坑（自测抓到，非常重要）**：`updateHud()` 里 `c.state.tracks[0]` 未判空 → 释放后抛 `Cannot read properties of null` → **异常中断帧循环末尾的 `requestAnimationFrame` → 整个桌宠永久冻结**。修：①HUD 判空；②**新增帧循环安全入口 `frameSafe()`**（try/catch + 统一续接 rAF，`frame()` 内部不再自行注册，避免双注册帧率翻倍）——从此任何未预期异常都不会冻结桌宠。
     **实测**：`[HIDETEST] hide qianxia` → `[RELEASE] freed assets of qianxia` → 内存 **638.5MB → 607.1MB（-31.4MB）**；`show qianxia` → `[RELEASE] restored assets of qianxia` → 643MB（回到正常，无泄漏）；HUD `qianxia: hid=0 t0=动作_待机@81.22`、`f` 持续增长（**未冻结**）；无 `GLOBAL_ERROR`。**三只全隐藏可省约 90MB**。
+30. **控制台关闭按钮 + 总开关锁定 + "隐藏后占用反而变高"疑问的完整分析**：
+    1. **控制台右上角新增 ✕ 关闭按钮**：`panel-close` IPC → `panel.close()`（**销毁窗口**，释放该渲染进程 ~68MB；下次打开重建）。与"最小化"（—）区分：最小化保留进程，关闭释放。
+    2. **总开关联动锁定**：控制台"显示小偶像"关闭时，三只独立开关所在的卡片加 `.card.locked`（**变灰 + `pointer-events:none` 不可点**），由 `applyCardsLock()` 随状态同步。
+    3. **用户疑问："用过隐藏功能后占用反而比首次启动高、像优化失效"——逐步分析结论**：
+       - **实验设计**：`QX_MEMTEST=1` 自动跑 8 次"隐藏全部 ⇄ 显示全部"（每 6s 一次），同时 6s 采样一次总内存。
+       - **曲线**（MB）：约 `583 ↔ 666` **稳定振荡、无单调增长** → **结论：不是内存泄漏**（隐藏必定下降、显示必定回升，幅度 76~82MB）。
+       - **"首次启动 329MB" 的原因**：那是**被其它窗口覆盖 → 我们主动暂停渲染**的最低状态（渲染完全停止）。任何"窗口可见/渲染中"的状态都天然比它高，两者不可直接比较。
+       - **"用过隐藏后 546~590MB" 的构成**：①**控制台进程 ~68MB**（用户操作时才会创建；现已可 ✕ 关闭）；②**显示态 GPU 合成全屏透明窗口**（GPU 进程 ~230-270MB）；③**Chromium 内存池不立即把 RSS 归还 OS**（任务管理器只看 RSS，释放动作仍真实生效——隐藏/显示差值 76~87MB 可证）。
+       - **优化确实生效**：三只全部隐藏 ≈ **省 77MB**（RSS），且**真实可用内存**远低于任务管理器显示值。
+       - **增强**：`--js-flags=--max-old-space-size=256 --expose-gc` + 释放后主动 `window.gc()` → 隐藏态再降 **10~15MB**（573MB vs 583~590MB），无副作用（无 `GLOBAL_ERROR`）。
 
 ---
 

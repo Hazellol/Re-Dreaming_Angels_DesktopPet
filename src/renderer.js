@@ -564,6 +564,8 @@
       c.data = null;
       c.skeleton = null;
       c.state = null;
+      // 主动触发一次 GC（--expose-gc）：释放骨架/贴图后立即回收，让占用更快回落到真实水平
+      try { if (typeof window.gc === 'function') window.gc(); } catch (e) { /* noop */ }
       console.log('[RELEASE] freed assets of', key);
     } catch (e) { console.log('[RELEASE] failed', key, e && e.message); }
   }
@@ -2504,6 +2506,17 @@
     }, 800);
 
     // debug 入口
+    if (dk.env('QX_MEMTEST') === '1') {
+      // 内存实验：反复"隐藏全部 → 显示全部"，用于区分"真泄漏"与"内存池不归还 OS"
+      let step = 0;
+      const cycle = () => {
+        step++;
+        const hide = step % 2 === 1;
+        console.log('[MEMTEST] step ' + step + ' → ' + (hide ? 'hide all' : 'show all'));
+        for (const k of ROLE_KEYS) setIdolVisibility(k, !hide);
+      };
+      for (let i = 1; i <= 8; i++) setTimeout(cycle, 4000 + i * 6000);
+    }
     if (dk.env('QX_HIDETEST') === '1') {
       // 隐藏→释放资源→显示→恢复：验证"释放纹理"优化（6s 隐藏千夏，14s 显示回来）
       setTimeout(() => { console.log('[HIDETEST] hide qianxia'); setIdolVisibility('qianxia', false); }, 6000);

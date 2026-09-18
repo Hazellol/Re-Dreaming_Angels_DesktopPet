@@ -118,10 +118,20 @@
   // 显示/隐藏小偶像（勾选框形式；状态与主进程同步——救援快捷键恢复显示时这里也会跟着变）
   const elIdolsShow = document.getElementById('idols-show');
   const elIdolsShowState = document.getElementById('idols-show-state');
+  // 总开关关闭时，"分别控制三小只"的开关变灰不可点（用户要求）
+  function applyCardsLock() {
+    for (const r of ROLES) {
+      const m = map[r.key];
+      if (m && m.card) m.card.classList.toggle('locked', !idolsShown);
+    }
+  }
   function renderIdolsShown(on) {
+    idolsShown = !!on;
     if (elIdolsShow) elIdolsShow.checked = !!on;
     if (elIdolsShowState) elIdolsShowState.textContent = '👀 显示小偶像：' + (on ? '开' : '关');
+    applyCardsLock();
   }
+  let idolsShown = true;
   (async () => {
     try { renderIdolsShown(await dk.getIdolsShown()); } catch (e) { /* noop */ }
   })();
@@ -137,6 +147,8 @@
   }
   try { dk.onIdolsShown((on) => renderIdolsShown(on)); } catch (e) { /* noop */ }
   document.getElementById('btn-min').addEventListener('click', () => dk.minimizePanel());
+  const btnClose = document.getElementById('btn-close');
+  if (btnClose) btnClose.addEventListener('click', () => dk.closePanel());   // 关闭控制台（窗口销毁，释放该渲染进程）
   document.getElementById('btn-quit').addEventListener('click', () => dk.quit());
 
   // ================= 对话配置（DeepSeek；存 data/ai_config.json，与主窗共享） =================

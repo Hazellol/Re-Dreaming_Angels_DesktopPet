@@ -40,6 +40,19 @@
     margin-right: 8px;
   }
   #btn-min:hover { color: #e0559a; border-color: #f5c0da; }
+  #btn-close {
+    -webkit-app-region: no-drag;
+    width: 30px; height: 30px; line-height: 1;
+    font: 700 14px/1 "Microsoft YaHei"; color: #9a8f9e;
+    border: 2px solid #e8dbe6; border-radius: 10px;
+    cursor: pointer; background: rgba(255,255,255,.7);
+    display: flex; align-items: center; justify-content: center;
+    margin-right: 8px;
+  }
+  #btn-close:hover { color: #fff; background: #e0559a; border-color: #e0559a; }
+  /* 总开关关闭：三小只独立开关锁定（变灰不可点） */
+  .card.locked { opacity: .45; filter: grayscale(1); }
+  .card.locked .c-switch { pointer-events: none; cursor: not-allowed; }
 
   /* 主体：左侧栏 + 内容区 */
   #main-row { display: flex; height: calc(100vh - 44px); }
@@ -199,6 +212,7 @@
     </div>
     <div style="display:flex;align-items:center;">
       <div id="btn-min" title="最小化（隐藏到任务栏）">—</div>
+      <div id="btn-close" title="关闭控制台（桌宠继续在后台运行；下次打开更快重建）">✕</div>
       <div id="btn-quit">退出桌宠</div>
     </div>
   </div>

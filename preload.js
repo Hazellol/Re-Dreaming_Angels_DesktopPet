@@ -141,6 +141,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   onMaxFps: (cb) => ipcRenderer.on('max-fps', (e, v) => cb(v)),
   onOccluded: (cb) => ipcRenderer.on('occluded', (e, v) => cb(v)),
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
+  closePanel: () => ipcRenderer.send('panel-close'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),
   setMouseIgnore: (ignore) => ipcRenderer.send('set-mouse-ignore', ignore),
   moveTop: () => ipcRenderer.send('move-top'),

@@ -59,7 +59,7 @@ const DISABLED_FEATURES = [
 try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
 // 降低峰值常驻内存（桌宠主要是贴图/GPU 占用，不在 V8 堆里，所以此值留足余量即可）。
-try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256'); } catch (e) { /* noop */ }
+try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc'); } catch (e) { /* noop */ }
 // 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
 app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {
@@ -616,6 +616,10 @@ app.whenReady().then(() => {
   ipcMain.on('toggle-idol-window', () => toggleMainWindow());
   ipcMain.on('panel-minimize', () => {
     if (panel && !panel.isDestroyed()) panel.minimize();
+  });
+  // 关闭控制台 = 销毁窗口（释放该渲染进程，省 ~60-70MB；下次打开时重建）
+  ipcMain.on('panel-close', () => {
+    if (panel && !panel.isDestroyed()) panel.close();
   });
   // 控制台：按需打开（右键菜单入口）+ 显示/隐藏小偶像的状态查询与设置
   ipcMain.on('open-panel', () => ensurePanel());
