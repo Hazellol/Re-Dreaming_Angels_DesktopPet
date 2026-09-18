@@ -54,9 +54,15 @@ const DISABLED_FEATURES = [
   'DialMediaRouteProvider',           // DIAL 投屏
   'PictureInPicture',                 // 画中画
   'PushMessaging',                    // 推送消息
-  'NotificationTriggers'              // 通知触发器
+  'NotificationTriggers',             // 通知触发器
+  // ⚠️ 关键（用户实测 bug）：禁用"DirectComposition 视频叠加层"。
+  // 透明桌宠窗口被提到视频窗口之上时，Windows 的视频硬件 overlay 会被破坏 → 视频黑屏
+  // （点击桌宠外才恢复）。禁用 overlay 后视频走普通 GPU 合成路径，不再被我们的透明窗口干扰。
+  'DirectCompositionVideoOverlays'
 ].join(',');
 try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
+// 视频叠加层开关（同上，双保险：部分 Chromium 版本用命令行开关而非 feature 名）
+try { app.commandLine.appendSwitch('disable-direct-composition-video-overlays'); } catch (e) { /* noop */ }
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
 // 降低峰值常驻内存（桌宠主要是贴图/GPU 占用，不在 V8 堆里，所以此值留足余量即可）。
 try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc'); } catch (e) { /* noop */ }
@@ -370,7 +376,10 @@ function mousePollTick() {
   // 注意：**不能**用"鼠标在她们区域内"来解除遮挡暂停——被覆盖时鼠标坐标同样落在她们矩形上，
   // 但视觉上并不可见（早期版本据此解除，导致"刚暂停就恢复"）。恢复只走遮挡检测（≤3s）或用户交互。
   // 每 ~1s 强制重下发一次：幂等操作，用于修复被其它程序（截图工具/捕获鼠标）扰动后的平台状态漂移
-  const force = (mousePollTicks % 15 === 0);
+  // 每 ~3s 强制重下发一次：幂等操作，用于修复被其它程序（截图工具/捕获鼠标）扰动后的平台状态漂移。
+  // ⚠️ 早期是每 1s —— 频繁切换窗口的 WS_EX_TRANSPARENT 会让 DWM 反复重排合成路径
+  // （用户实测：光标经过/交互时正在播放的视频会黑屏）。降到 3s 显著减少扰动。
+  const force = (mousePollTicks % 45 === 0);
   if (inside === mousePollInside && !force) return;
   applyMouseIgnore(inside, cx, cy, force ? 'resync' : 'change');
   checkInputChannel(cx, cy);   // 输入通道心跳检测（光标在动却收不到事件 → L1→L2→L3 自愈）
@@ -844,12 +853,12 @@ app.whenReady().then(() => {
     const ec = payload.evtCount | 0;
     if (ec !== lastEvtCount) { lastEvtCount = ec; lastEvtChangeAt = Date.now(); }
   });
-  // 显式提起窗口层级（浮层显示/菜单弹出等场景；不改变 alwaysOnTop 属性）
   // 用户主动操作用户界面 → 立即解除"被覆盖暂停渲染"，保证交互即时响应
+  // ⚠️ 这里**刻意不调用 win.moveTop()**：①对未置顶窗口实测无效；②频繁提层会触发 DWM 重排，
+  //    破坏正在播放视频的硬件叠加层（用户实测黑屏）。层级语义已由"置顶开关/救援快捷键"负责。
   ipcMain.on('move-top', () => {
     if (!win || win.isDestroyed()) return;
     try { setOccluded(false); } catch (e) { /* noop */ }
-    try { win.moveTop(); } catch (e) { /* noop */ }
   });
   ipcMain.on('context-menu', () => { /* 菜单已迁移为 renderer DOM 菜单 */ });
 

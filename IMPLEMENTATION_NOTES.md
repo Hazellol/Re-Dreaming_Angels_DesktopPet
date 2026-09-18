@@ -230,6 +230,14 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **修复**：暂停时**先跑一帧"清屏帧"再停链** —— `syncRenderPause()` 置 `clearPending = true` 并 `requestAnimationFrame(frameSafe)`；`frame()` 入口在 `renderPaused && clearPending` 时执行 `gfx.clear(0,0,0,0)` 后返回；`frameSafe` 在 `clearPending` 期间继续续接（保证这一帧真的被合成），清屏完成才彻底停链。
     **实测**：`QX_IDOLSHIDE=1` → 全隐藏后截图**桌面无任何残影** ✓，日志 `[RENDER] paused (all idols hidden)` + 释放 ✓。
     **用户连续操作内存实测（12 步，认定为"优化合格"）**：启动 173 → 拖动互动 205 → **开控制台 265（+60，控制台进程）** → **关控制台 220（-45，懒加载生效）** → 再开 268 → 隐藏千夏 268（释放在 800ms 延迟+GC 后生效）→ 隐藏南宫 260 → **等待后 228** → 全隐藏 224 → **等待后 198（触发全隐藏暂停渲染）** → 全部显示 261 → **再全隐藏 198（与上次完全一致，稳定复现）**。即：**全隐藏比显示省 ~63MB（24%）**，控制台开关 ±45~60MB，全隐藏后需等几秒释放/GC 到位才回落（符合设计）。
+33. **修复"看视频时与桌宠交互导致视频黑屏"（用户实测）**：
+    **现象**：播放网页视频（B 站）时，光标经过三小只或与其交互 → **视频画面变黑**，且一直保持到点击桌宠以外的画面才恢复。
+    **根因**：Windows 上视频播放走 **DirectComposition 硬件叠加层（video overlay）**；我们的**透明分层窗口**在交互时被**提到视频窗口之上**（`move-top` IPC 会调 `win.moveTop()`）+ **穿透状态（`WS_EX_TRANSPARENT`）反复切换**（早期每秒 resync 一次）→ **DWM 重排合成路径 → 视频 overlay 失效 → 黑屏**；点击别处后我们的窗口退回 → overlay 重建 → 画面恢复（与用户观察完全一致）。
+    **三道修复**：
+    1. **禁用视频叠加层**（主修复）：`disable-features` 加入 `DirectCompositionVideoOverlays`，并追加命令行开关 `--disable-direct-composition-video-overlays`（双保险，兼容不同 Chromium 版本的开关名）→ 视频改走普通 GPU 合成，不再被透明窗口干扰。
+    2. **去掉交互时的提层**：`move-top` IPC 不再调用 `win.moveTop()` —— ①对未置顶窗口实测无效；②正是"提层扰动 DWM"的来源。层级语义统一交给「保持置顶」开关与救援快捷键（`showOnTopOnce` 仍保留脉冲提层）。
+    3. **resync 频率 1s → 3s**（`mousePollTicks % 45`）：减少 `WS_EX_TRANSPARENT` 反复切换对 DWM 合成路径的扰动，同时仍保留"状态漂移自愈"能力。
+    **验证**：启动零错误 ✓；右键菜单、点击互动、控制台、显隐等功能回归正常 ✓（视频黑屏需真机播放环境，交由用户确认）。
 
 ---
 
