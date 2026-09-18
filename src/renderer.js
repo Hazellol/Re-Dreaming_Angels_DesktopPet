@@ -2268,6 +2268,9 @@
     try { dk.sendHitRects(rects, forceInteractive, mouseEventCount); } catch (e) { /* noop */ }
   }
   setInterval(() => reportHitRects(false), 150);   // 角色走动/动画 → 矩形小幅变化，周期性上报
+  // 拖动/编辑中把上报频率提到 ~50ms：窗口"形状"跟随角色位置，上报太慢会让
+  // 角色跑出形状被裁掉（用户实测"拖动太快显示不全"）。
+  setInterval(() => { if (drag.on || editMsgIndex != null) reportHitRects(false); }, 50);
   // 内部状态刷新（用于其它逻辑/hover 效果；穿透不再由这里下发）
   function refreshMouseIgnore() {
     if (lastMouse.x < 0) { reportHitRects(true); return false; }

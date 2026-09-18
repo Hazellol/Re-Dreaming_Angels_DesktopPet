@@ -335,12 +335,25 @@ function checkInputChannel(cx, cy) {
 // ===== 窗口区域（形状）应用：把窗口限制为「角色 + 浮层」的矩形并集 =====
 // rects 为窗口 client 坐标（CSS px）；空数组 = 清除区域、恢复完整窗口矩形。
 // 形状之外：窗口不参与命中（不挡下层点击）也不参与合成（视频 overlay 得以保留）。
+// 边距（用户实测反馈）：
+//   · 浮层的 CSS 阴影会向外扩散 10~30px —— 边距太小会把阴影裁成硬边（"奇怪的阴影"+显示不全）
+//   · 拖动/快速移动时区域更新有延迟 —— 交互中额外用"光标周围大方块"兜住跟随路径
+const REGION_PAD_IDLE = 32;    // 平时边距（覆盖角色边缘 + 浮层阴影）
+const REGION_PAD_DRAG = 170;   // 交互（拖动/编辑）时边距，兜住快速移动
 let regionKey = '';
-const REGION_PAD = 6;   // 物理像素边距：避免裁掉角色边缘/阴影，也减少形状的频繁微调
+let lastCursorForRegion = { x: -1, y: -1 };
 function applyWindowRegion(rects) {
   if (!regionApi || !USE_REGION || !win || win.isDestroyed()) return;
-  const list = Array.isArray(rects) ? rects : [];
-  const key = list.map((r) => Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.w) + 'x' + Math.round(r.h)).join('|');
+  let list = (Array.isArray(rects) ? rects : []).slice();
+  const interacting = hitForceInteractive;
+  const pad = interacting ? REGION_PAD_DRAG : REGION_PAD_IDLE;
+  // 交互中：把"光标周围的方块"并入区域 —— 角色拖动时跟随光标，位置上报有延迟，
+  // 用光标邻域兜底可避免"拖动太快角色被窗口形状裁掉"（用户实测）。
+  if (interacting && lastCursorForRegion.x >= 0) {
+    const c = lastCursorForRegion;
+    list = list.concat([{ x: c.x - 260, y: c.y - 260, w: 520, h: 520 }]);
+  }
+  const key = list.map((r) => Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.w) + 'x' + Math.round(r.h)).join('|') + '#' + pad;
   if (key === regionKey) return;
   regionKey = key;
   try {
@@ -351,8 +364,8 @@ function applyWindowRegion(rects) {
     let acc = 0;
     for (const r of list) {
       const rr = regionApi.CreateRectRgn(
-        Math.round(r.x * sf) - REGION_PAD, Math.round(r.y * sf) - REGION_PAD,
-        Math.round((r.x + r.w) * sf) + REGION_PAD, Math.round((r.y + r.h) * sf) + REGION_PAD
+        Math.round(r.x * sf) - pad, Math.round(r.y * sf) - pad,
+        Math.round((r.x + r.w) * sf) + pad, Math.round((r.y + r.h) * sf) + pad
       );
       if (!rr) continue;
       if (!acc) { acc = rr; continue; }
@@ -455,6 +468,7 @@ function mousePollTick() {
     const p = screen.getCursorScreenPoint();   // 屏幕 DIP 坐标（不受遮挡/SetCapture 影响）
     const b = win.getBounds();
     cx = p.x - b.x; cy = p.y - b.y;            // → 窗口 client 坐标（1:1 CSS px）
+    lastCursorForRegion = { x: cx, y: cy };    // 记录光标（拖动时窗口形状用它兜住跟随路径）
     for (const r of hitRects) {
       if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) { inside = true; break; }
     }
