@@ -2315,11 +2315,14 @@
   let pausedOccluded = false;
   let pausedAllHidden = false;
   let resumeTimer = null;
+  let clearPending = false;   // 暂停前先画一帧"清屏帧"，否则最后一帧画面会残留在桌面上（残像 bug）
   function syncRenderPause() {
     const shouldPause = pausedOccluded || pausedAllHidden;
     if (shouldPause && !renderPaused) {
       renderPaused = true;
+      clearPending = true;                 // 先跑一帧清屏（见 frame 入口）再真正停链
       console.log('[RENDER] paused (' + (pausedOccluded ? 'covered' : 'all idols hidden') + ')');
+      requestAnimationFrame(frameSafe);    // 触发这一帧清屏
       if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
       // 暂停期间轻量轮询"隐藏态是否该恢复"（有角色显示 / 打开浮层 / 气泡 / 对话框 / 互聊）——
       // 300ms 一次，开销极低；覆盖态的恢复由主进程 occluded IPC 负责。
@@ -2328,6 +2331,7 @@
       }, 300);
     } else if (!shouldPause && renderPaused) {
       renderPaused = false;
+      clearPending = false;
       if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
       lastTime = 0;                        // 重置计时，避免恢复瞬间 dt 过大
       console.log('[RENDER] resumed');
@@ -2376,7 +2380,12 @@
     hud.textContent = lines.join('\n');
   }
   function frame(now) {
-    if (renderPaused) return;   // 被完全覆盖：停止 rAF 链（渲染完全暂停，CPU 接近 0）
+    if (renderPaused) {
+      // 暂停前的最后一帧：清屏（透明），让合成器把桌面上她们的画面擦掉——
+      // 否则暂停后屏幕会保留最后一帧"残像"（用户实测：全隐藏后三只残影留在桌面）
+      if (clearPending) { clearPending = false; gfx.clear(0, 0, 0, 0); }
+      return;
+    }
     // 拖动状态超时兜底：拖动中若 2.5s 内没有任何鼠标移动更新（mouseup 被截图工具等吞掉的特征）
     // → 中止拖动，避免 drag.on 卡死导致所有点击失效
     if (drag.on && drag.lastMoveAt && (now - drag.lastMoveAt) > 2500) abortDrag();
@@ -2456,7 +2465,8 @@
     } catch (e) {
       console.log('GLOBAL_ERROR: frame', e && e.message);
     }
-    if (!renderPaused) requestAnimationFrame(frameSafe);
+    // 暂停时也要把"清屏帧"跑完（clearPending）才停链，否则残像会留在桌面
+    if (!renderPaused || clearPending) requestAnimationFrame(frameSafe);
   }
 
   // ================= 启动 =================

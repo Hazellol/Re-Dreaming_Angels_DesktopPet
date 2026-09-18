@@ -225,6 +225,11 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **修复**：渲染暂停统一为两个来源 —— `pausedOccluded`（被覆盖）与 **`pausedAllHidden`（三只全隐藏且无浮层）**，由 `syncRenderPause()` 统一管理；暂停期间用 300ms 轻量轮询检查恢复条件，并在**显示角色 / 打开浮层**时通过 `wakeFromHiddenPause()` 立即恢复。
     **同时修掉两个隐藏 bug**：①`isAnyOverlayOpen()` 原用 `style.display !== 'none'` 判断，而未打开的元素 `display` 是**空字符串** → 恒判"有浮层" → **全隐藏暂停永不触发**；改用 `offsetWidth/offsetHeight > 0`（真有尺寸）。②显示角色时若资源已释放，恢复期间 `hidden` 仍为 true → 出现"resumed 后立刻又 paused"的多余抖动；改为**进入显示分支立即 `c.hidden = false`**（帧循环用 `!c.state` 跳过尚未恢复的她），并把"无 state"的角色排除出命中矩形。
     **实测**：`QX_IDOLSHIDE=1` → 日志 `[RENDER] paused (all idols hidden)` + 三只 `[RELEASE] freed assets` ✓，内存 **613MB → 528.7MB（-84MB）**；`QX_MEMTEST=1` 循环验证 `paused → freed ×3 → resumed → restored ×3` **干净交替、无多余暂停、无 GLOBAL_ERROR** ✓。
+32. **修复"全隐藏后残像留在桌面"（暂停渲染的副作用）+ 连续操作内存实测结论**：
+    **残像根因**：暂停渲染 = 停止 rAF 链 → **屏幕停留在最后一帧**（她们还在的画面）→ 桌面上留下残影（用户实测：隐藏爱芮/全部隐藏后残影不消失；与历史"WebGL 无 draw 时合成器不重绘"同源）。
+    **修复**：暂停时**先跑一帧"清屏帧"再停链** —— `syncRenderPause()` 置 `clearPending = true` 并 `requestAnimationFrame(frameSafe)`；`frame()` 入口在 `renderPaused && clearPending` 时执行 `gfx.clear(0,0,0,0)` 后返回；`frameSafe` 在 `clearPending` 期间继续续接（保证这一帧真的被合成），清屏完成才彻底停链。
+    **实测**：`QX_IDOLSHIDE=1` → 全隐藏后截图**桌面无任何残影** ✓，日志 `[RENDER] paused (all idols hidden)` + 释放 ✓。
+    **用户连续操作内存实测（12 步，认定为"优化合格"）**：启动 173 → 拖动互动 205 → **开控制台 265（+60，控制台进程）** → **关控制台 220（-45，懒加载生效）** → 再开 268 → 隐藏千夏 268（释放在 800ms 延迟+GC 后生效）→ 隐藏南宫 260 → **等待后 228** → 全隐藏 224 → **等待后 198（触发全隐藏暂停渲染）** → 全部显示 261 → **再全隐藏 198（与上次完全一致，稳定复现）**。即：**全隐藏比显示省 ~63MB（24%）**，控制台开关 ±45~60MB，全隐藏后需等几秒释放/GC 到位才回落（符合设计）。
 
 ---
 
