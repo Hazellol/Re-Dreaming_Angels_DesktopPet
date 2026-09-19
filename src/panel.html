@@ -377,15 +377,6 @@
           <div class="ai-btns" style="margin-top:4px;">
             <button class="ai-btn small" id="tts-open-cache">📂 打开音频目录</button>
           </div>
-          <div class="ai-row" style="align-items:flex-start;"><label>参考音频</label>
-            <div style="flex:1;">
-              <div class="ai-btns" id="tts-ref-strategy" style="margin:0;">
-                <button class="ai-btn small tts-ref-btn" data-ref="random">随机（按情绪）</button>
-                <button class="ai-btn small tts-ref-btn" data-ref="fixed">固定一条</button>
-              </div>
-              <input type="text" id="tts-ref-fixed" placeholder="固定参考文件名（如 Level_PartnerSunna_PartnerTalk_Sunna_74490001.wav）—— 选它可与云端 WebUI 完全一致，便于对比音色" style="width:100%;margin-top:6px;">
-            </div>
-          </div>
           <div class="ai-row" style="align-items:flex-start;"><label>高级(JSON)</label>
             <textarea id="tts-adv" style="flex:1;height:64px;font:11px monospace;" placeholder='{"apiPath":"/tts","params":{...},"extraBody":{...},"refFields":{"audio":"ref_audio_path","text":"prompt_text"}}'></textarea>
           </div>
