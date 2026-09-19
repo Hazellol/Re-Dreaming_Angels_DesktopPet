@@ -383,25 +383,24 @@ function createTtsManager(ctx) {
     } catch (e) { /* noop */ }
   }
   function downloadTo(url, dest, onProgress) {
+    // 同样走 Electron net：系统证书 + 自动跟随 302（GitHub Release 会跳到 objects.githubusercontent.com）
     return new Promise((resolve, reject) => {
-      const isHttps = /^https:/i.test(url);
-      const mod = isHttps ? require('https') : require('http');
-      const file = fsMod.createWriteStream(dest);
-      const req = mod.get(url, { timeout: 60000 }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          file.close();
-          return downloadTo(res.headers.location, dest, onProgress).then(resolve, reject);
+      netRequest(url, {
+        timeoutMs: 3600000,                       // 大文件：给足 1 小时
+        headers: { 'User-Agent': 'ReDreamingAngels-DesktopPet' },
+        onResponse: (res) => {
+          if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode + '（请检查下载源或网络）')); return; }
+          const total = parseInt(res.headers['content-length'] || '0', 10) || 0;
+          let got = 0;
+          let file = null;
+          try { file = fsMod.createWriteStream(dest); } catch (e) { reject(e); return; }
+          res.on('data', (d) => { got += d.length; if (onProgress) onProgress(got, total); });
+          res.on('end', () => { try { file.close(() => resolve({ bytes: got })); } catch (e) { resolve({ bytes: got }); } });
+          res.on('error', reject);
+          file.on('error', reject);
+          res.pipe(file);
         }
-        if (res.statusCode !== 200) { file.close(); return reject(new Error('HTTP ' + res.statusCode)); }
-        const total = parseInt(res.headers['content-length'] || '0', 10);
-        let got = 0;
-        res.on('data', (d) => { got += d.length; if (onProgress) onProgress(got, total); });
-        res.on('error', reject);
-        res.pipe(file);
-        file.on('finish', () => file.close(() => resolve({ bytes: got })));
-      });
-      req.on('timeout', () => { req.destroy(); reject(new Error('download timeout')); });
-      req.on('error', reject);
+      }).catch(reject);
     });
   }
   function expandArchive(zipPath, outDir) {
@@ -549,26 +548,41 @@ function createTtsManager(ctx) {
     }
   }
 
-  // ---------- 检测更新（查项目仓库最新 Release 与最近提交）----------
-  function httpsGetJson(host, pathName, timeoutMs) {
+  // ---------- 网络：统一用 Electron 的 net（Chromium 网络栈 → 默认信任系统证书）----------
+  // 背景：Node 自带的 https 使用内置 CA 池；用户环境若装了代理/自签根证书（企业网、加速器），
+  //       会报 "unable to verify the first certificate"。改用 net 模块即自动使用系统证书，无需改环境。
+  function netRequest(url, { method = 'GET', headers = {}, timeoutMs = 15000, onResponse } = {}) {
+    const { net } = require('electron');
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+      try {
+        const req = net.request({ method, url, redirect: 'follow' });
+        for (const [k, v] of Object.entries(headers)) { try { req.setHeader(k, v); } catch (e) { /* noop */ } }
+        const timer = setTimeout(() => { try { req.abort(); } catch (e) { /* noop */ } done(reject, new Error('连接超时')); }, timeoutMs);
+        req.on('response', (res) => { clearTimeout(timer); if (onResponse) { try { onResponse(res, req); } catch (e) { done(reject, e); } } });
+        req.on('error', (e) => { clearTimeout(timer); done(reject, e || new Error('网络错误')); });
+        req.end();
+      } catch (e) { done(reject, e); }
+    });
+  }
+  function netGetJson(url, timeoutMs) {
     return new Promise((resolve) => {
-      const https = require('https');
-      const req = https.request({
-        host, path: pathName, method: 'GET', timeout: timeoutMs || 9000,
-        headers: { 'User-Agent': 'ReDreamingAngels-DesktopPet', 'Accept': 'application/vnd.github+json' }
-      }, (res) => {
-        const chunks = [];
-        res.on('data', (d) => chunks.push(d));
-        res.on('end', () => {
-          const txt = Buffer.concat(chunks).toString('utf8');
-          try {
-            resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: JSON.parse(txt) });
-          } catch (e) { resolve({ ok: false, status: res.statusCode, error: 'JSON 解析失败 (HTTP ' + res.statusCode + ')' }); }
-        });
-      });
-      req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: '连接超时' }); });
-      req.on('error', (e) => resolve({ ok: false, error: e && e.message }));
-      req.end();
+      netRequest(url, {
+        headers: { 'User-Agent': 'ReDreamingAngels-DesktopPet', 'Accept': 'application/vnd.github+json' },
+        timeoutMs: timeoutMs || 12000,
+        onResponse: (res) => {
+          const chunks = [];
+          res.on('data', (d) => chunks.push(d));
+          res.on('end', () => {
+            const txt = Buffer.concat(chunks).toString('utf8');
+            try {
+              resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: JSON.parse(txt) });
+            } catch (e) { resolve({ ok: false, status: res.statusCode, error: 'JSON 解析失败 (HTTP ' + res.statusCode + ')' }); }
+          });
+          res.on('error', (e) => resolve({ ok: false, error: e && e.message }));
+        }
+      }).catch((e) => resolve({ ok: false, error: (e && e.message) || '网络错误' }));
     });
   }
   async function checkUpdate() {
@@ -576,8 +590,8 @@ function createTtsManager(ctx) {
     if (!m) return { ok: false, error: '请先配置 GitHub 仓库地址' };
     const owner = m[1], repo = m[2].replace(/\.git$/i, '');
     const [rel, com] = await Promise.all([
-      httpsGetJson('api.github.com', '/repos/' + owner + '/' + repo + '/releases?per_page=3'),
-      httpsGetJson('api.github.com', '/repos/' + owner + '/' + repo + '/commits?per_page=5')
+      netGetJson('https://api.github.com/repos/' + owner + '/' + repo + '/releases?per_page=3'),
+      netGetJson('https://api.github.com/repos/' + owner + '/' + repo + '/commits?per_page=5')
     ]);
     if (!rel.ok && !com.ok) return { ok: false, error: rel.error || com.error || '查询失败' };
     const releases = (Array.isArray(rel.json) ? rel.json : []).map((r) => ({
@@ -611,7 +625,7 @@ function createTtsManager(ctx) {
     });
   }
 
-  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, dataRoot, cacheDir: () => cacheDir, installFromUrl, installState: () => installState };
+  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, dataRoot, cacheDir: () => cacheDir, installFromUrl, installState: () => installState, checkUpdate };
 }
 
 module.exports = { createTtsManager, DEFAULT_CONFIG };

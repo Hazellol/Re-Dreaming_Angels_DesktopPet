@@ -841,6 +841,13 @@ app.whenReady().then(() => {
     tts.register();
     setInterval(() => { try { tts.probe(); } catch (e) { /* noop */ } }, 5000);   // 5s 探活：服务状态实时反映到控制台（无需用户手点"探测"）
     console.log('[TTS] manager ready (enabled =', tts.config().enabled + ')');
+    // 调试：QX_TTS_UPDATE_TEST=1 → 启动 8s 后自检"检测更新"接口（验证 TLS/网络）
+    if (process.env.QX_TTS_UPDATE_TEST) {
+      setTimeout(async () => {
+        const r = await tts.checkUpdate();
+        console.log('[UPDATE-TEST]', JSON.stringify(r).slice(0, 500));
+      }, 8000);
+    }
     // 调试：QX_TTS_TEST='qianxia|你好呀|happy' → 启动 8s 后自动合成一句（验证链路，无需 UI 操作）
     if (process.env.QX_TTS_TEST) {
       setTimeout(async () => {
