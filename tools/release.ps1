@@ -13,6 +13,7 @@
 param(
   [string]$Repo = 'Hazellol/Re-Dreaming_Angels_DesktopPet',
   [string]$Message = '',
+  [switch]$Build,          # 发布前先打包便携版（npm run pack:portable）
   [switch]$Force,          # 强制推送（远端为独立历史时使用，会覆盖远端分支）
   [switch]$SkipPush,
   [switch]$SkipRelease,
@@ -196,4 +197,21 @@ $ErrorActionPreference = $prevEap
 Remove-Item $notesFile -Force -ErrorAction SilentlyContinue
 
 if ($createCode -ne 0) { throw "Release 创建失败（退出码 $createCode）" }
+# ---------- 5. 上传安装包（dist 下存在 exe 时自动附带） ----------
+$exes = @(Get-ChildItem (Join-Path $projRoot 'dist') -Filter '*.exe' -ErrorAction SilentlyContinue)
+if ($exes.Count -gt 0) {
+  Write-Step "上传安装包到 Release（$($exes.Count) 个）"
+  foreach ($e in $exes) {
+    Write-Host ("  上传 " + $e.Name + "（" + [math]::Round($e.Length/1MB,1) + " MB）…")
+    $prevEap9 = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $gh release upload $tag $e.FullName --repo $Repo --clobber
+    $upCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap9
+    if ($upCode -ne 0) { Write-Host "  上传失败：$($e.Name)" -ForegroundColor Yellow } else { Write-Host "  已上传：$($e.Name)" -ForegroundColor Green }
+  }
+} else {
+  Write-Host "`n（未发现 dist\*.exe，跳过安装包上传；如需打包请加 -Build 参数）"
+}
+
 Write-Host "`n发布完成：https://github.com/$Repo/releases/tag/$tag" -ForegroundColor Green

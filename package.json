@@ -31,7 +31,13 @@
       "preload.js",
       "src/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.md",
+      "!tools",
+      "!scripts",
+      "!tts",
+      "!tts_out",
+      "!data"
     ],
     "win": {
       "icon": "assets/icon.png",
@@ -50,6 +56,9 @@
       "createStartMenuShortcut": true,
       "shortcutName": "妄想天使桌宠",
       "artifactName": "妄想天使桌宠-安装版-Setup-${version}.exe"
-    }
+    },
+    "asarUnpack": [
+      "**/node_modules/koffi/**"
+    ]
   }
 }
