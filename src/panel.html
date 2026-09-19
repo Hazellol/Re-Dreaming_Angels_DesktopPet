@@ -383,9 +383,14 @@
           </div>
           <div class="ai-btns" style="margin-top:6px;">
             <button class="ai-btn pink small" id="tts-install">⬇ 一键下载推理环境</button>
-            <span class="ai-hint" id="tts-install-msg">下载→解压→自动探测 Python 与服务脚本→写入配置（自动切 v2ProPlus 音色配置）</span>
+            <button class="ai-btn small" id="tts-reinstall" style="display:none;">🔄 重新下载</button>
+            <button class="ai-btn small" id="tts-logs-toggle">📜 后台日志</button>
+            <button class="ai-btn small" id="tts-open-logs">📂 日志目录</button>
           </div>
-          <div style="height:6px;background:#efe3ea;border-radius:4px;overflow:hidden;margin-top:6px;">
+          <div class="ai-hint" id="tts-installed-hint" style="margin-top:4px;"></div>
+          <pre id="tts-logbox" style="display:none;max-height:210px;overflow:auto;background:#221c21;color:#d9d1d7;border-radius:10px;padding:9px;font:11px/1.55 monospace;white-space:pre-wrap;margin-top:8px;"></pre>
+          <div class="ai-hint" id="tts-install-msg" style="margin-top:6px;">下载→解压→自动探测 Python 与服务脚本→写入配置（自动切 v2ProPlus 音色配置）</div>
+          <div style="height:8px;background:#efe3ea;border-radius:5px;overflow:hidden;margin-top:6px;">
             <div id="tts-install-bar" style="height:100%;width:0%;background:#e0559a;transition:width .2s;"></div>
           </div>
           <div class="ai-btns" style="margin-top:6px;">

@@ -10,8 +10,9 @@ const http = require('http');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const DEFAULT_CONFIG = {
-  enabled: false,                 // 总开关（默认关：用户自行开启）
+const ROLE_KEYS = ['airui', 'qianxia', 'nangong'];
+
+const DEFAULT_CONFIG = {  enabled: false,                 // 总开关（默认关：用户自行开启）
   mode: 'external',               // external=用已在运行的服务；managed=由桌宠启动（便携包）
   host: '127.0.0.1',
   port: 9880,
@@ -76,6 +77,28 @@ function createTtsManager(ctx) {
   const legacyTtsDir = pathMod.join(userData, 'tts');   // 旧位置（兼容读取/迁移来源）
   function cfgFile() { return pathMod.join(dataRoot(), 'tts_config.json'); }
   function cacheDirPath() { return pathMod.join(dataRoot(), 'cache'); }
+  // ===== 后台日志（<数据根>/logs/app.log，1MB 轮转；控制台可查看）=====
+  const LOG_MAX = 1024 * 1024;
+  function logDirPath() { return pathMod.join(dataRoot(), 'logs'); }
+  function logFilePath() { return pathMod.join(logDirPath(), 'app.log'); }
+  function logLine(level, msg) {
+    const line = '[' + new Date().toISOString().replace('T', ' ').slice(0, 19) + '] [' + level + '] ' + msg + '\n';
+    try {
+      fsMod.mkdirSync(logDirPath(), { recursive: true });
+      const f = logFilePath();
+      try { if (fsMod.statSync(f).size > LOG_MAX) fsMod.renameSync(f, pathMod.join(logDirPath(), 'app.old.log')); } catch (e) { /* noop */ }
+      fsMod.appendFileSync(f, line, 'utf8');
+    } catch (e) { /* noop */ }
+    if (level !== 'DEBUG') console.log('[TTS][' + level + ']', msg);
+  }
+  function readLogs(maxLines) {
+    try {
+      const f = logFilePath();
+      if (!fsMod.existsSync(f)) return '(暂无日志)';
+      const lines = fsMod.readFileSync(f, 'utf8').replace(/\r/g, '').split('\n');
+      return lines.slice(-(maxLines || 300)).join('\n').trim() || '(暂无日志)';
+    } catch (e) { return '(读取失败: ' + (e && e.message) + ')'; }
+  }
   let cfgPath = pathMod.join(userData, 'tts_config.json');
   let cacheDir = pathMod.join(userData, 'tts_cache');
   let proc = null;               // managed 模式的服务子进程
@@ -113,6 +136,13 @@ function createTtsManager(ctx) {
     return cfg;
   }
   load();
+  // 启动自检日志（用户点「📜 后台日志」立即能看到环境概况）
+  try {
+    logLine('INFO', 'TTS 管理器就绪（enabled=' + cfg.enabled + ', device=' + cfg.device + ', mirror=' + cfg.mirror + '）');
+    logLine('INFO', '数据目录：' + dataRoot());
+    logLine('INFO', '安装状态：推理环境=' + (isRuntimeInstalled() ? '已安装' : '未安装') +
+      '；语音包 ' + ['airui', 'qianxia', 'nangong'].map((r) => r + '=' + (isVoiceInstalled(r) ? '✓' : '✗')).join(' '));
+  } catch (e) { /* noop */ }
   // 调试/自动化：环境变量覆盖（QX_TTS_ENABLED/PORT/HOST/MODE/DEVICE/VOICES）
   try {
     if (process.env.QX_TTS_ENABLED === '1') cfg.enabled = true;
@@ -126,20 +156,40 @@ function createTtsManager(ctx) {
   } catch (e) { /* noop */ }
 
   // ---------- 语音包（情绪映射）----------
+  function voicesCandidates() {
+    const list = [];
+    if (cfg.voicesDir) list.push(cfg.voicesDir);
+    list.push(pathMod.join(dataRoot(), 'voices'));
+    list.push(pathMod.join(legacyTtsDir, 'voices'));
+    list.push(pathMod.join(__dirname, '..', 'tts_out'));
+    return list.filter(Boolean);
+  }
+  // 某角色的语音包目录（含 emotions.json 的那个候选目录）
+  function voiceDirFor(role) {
+    for (const c of voicesCandidates()) {
+      try { if (fsMod.existsSync(pathMod.join(c, role, 'emotions.json'))) return c; } catch (e) { /* noop */ }
+    }
+    return voicesCandidates()[0];
+  }
   function voicesRoot() {
-    if (cfg.voicesDir) return cfg.voicesDir;
-    // 依次尝试：<数据根>/voices（项目内）→ 旧 userData/tts/voices → 项目 tts_out（兼容手工构建）
-    const cands = [
-      pathMod.join(dataRoot(), 'voices'),
-      pathMod.join(legacyTtsDir, 'voices'),
-      pathMod.join(__dirname, '..', 'tts_out')
-    ];
-    for (const c of cands) { try { if (fsMod.existsSync(c)) return c; } catch (e) { /* noop */ } }
-    return cands[0];
+    // 优先返回"确实含语音包"的目录（避免空目录抢先，导致找不到情绪映射）
+    for (const c of voicesCandidates()) {
+      try {
+        if (!fsMod.existsSync(c)) continue;
+        if (ROLE_KEYS.some((r) => fsMod.existsSync(pathMod.join(c, r, 'emotions.json')))) return c;
+      } catch (e) { /* noop */ }
+    }
+    for (const c of voicesCandidates()) { try { if (fsMod.existsSync(c)) return c; } catch (e) { /* noop */ } }
+    return voicesCandidates()[0];
   }
   function loadEmotions(role) {
-    const file = pathMod.join(voicesRoot(), role, 'emotions.json');
-    try { return JSON.parse(fsMod.readFileSync(file, 'utf8')); } catch (e) { return null; }
+    for (const c of voicesCandidates()) {
+      const file = pathMod.join(c, role, 'emotions.json');
+      try {
+        if (fsMod.existsSync(file)) return JSON.parse(fsMod.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+      } catch (e) { /* 试下一个候选 */ }
+    }
+    return null;
   }
   function pickReference(role, mood) {
     const emo = loadEmotions(role);
@@ -147,7 +197,7 @@ function createTtsManager(ctx) {
     const list = emo.map[mood] || emo.map[emo.default || 'neutral'];
     if (!list || !list.length) return null;
     const pick = list[Math.floor(Math.random() * list.length)];
-    const base = pathMod.join(voicesRoot(), role);
+    const base = pathMod.join(voiceDirFor(role), role);
     const name = pathMod.basename(pick.ref);
     // 语音包结构：<voices>/<role>/refs/<file>；兼容扁平放置
     const cands = [pathMod.join(base, 'refs', name), pathMod.join(base, name)];
@@ -174,11 +224,17 @@ function createTtsManager(ctx) {
       req.end();
     });
   }
+  let probeFailCount = 0;   // 抖动抑制：服务忙（加载/合成）时探活可能超时，连续多次失败才判定"未运行"
   async function probe() {
-    const r = await httpJsonOnce({ method: 'GET', host: cfg.host, port: cfg.port, pathName: cfg.healthPath || '/health', timeoutMs: 1500 });
+    const r = await httpJsonOnce({ method: 'GET', host: cfg.host, port: cfg.port, pathName: cfg.healthPath || '/health', timeoutMs: 3000 });
     // 有些版本没有 /health → 404 也算"服务在跑"
-    const running = r.ok || r.status === 404 || r.status === 405;
+    const okNow = r.ok || r.status === 404 || r.status === 405;
+    if (okNow) probeFailCount = 0; else probeFailCount++;
+    // 已判定运行中的服务：容忍连续 3 次失败（避免状态反复横跳）；已停止的：1 次成功即恢复
+    const running = okNow || (lastStatus.running && probeFailCount < 3);
+    const changed = running !== lastStatus.running;
     lastStatus = { running, checkedAt: Date.now(), lastError: running ? '' : (r.error || ('HTTP ' + r.status)), lastSynthAt: lastStatus.lastSynthAt };
+    if (changed) logLine('INFO', '服务状态变化 → ' + (running ? '运行中 (' + cfg.host + ':' + cfg.port + ')' : '未运行' + (lastStatus.lastError ? '（' + lastStatus.lastError + '）' : '')));
     broadcast();
     return running;
   }
@@ -196,8 +252,8 @@ function createTtsManager(ctx) {
       const logFile = pathMod.join(logDir, 'server.log');
       const out = fsMod.openSync(logFile, 'a');
       proc = spawn(cfg.runtimePath, args, { cwd: pathMod.dirname(cfg.serverScript), windowsHide: true, stdio: ['ignore', out, out] });
-      proc.on('exit', (code) => { console.log('[TTS] service exited', code); proc = null; lastStatus.running = false; broadcast(); });
-      console.log('[TTS] service started, device =', cfg.device, 'log =', logFile);
+      proc.on('exit', (code) => { logLine('INFO', '服务进程退出（code=' + code + '）'); proc = null; lastStatus.running = false; broadcast(); });
+      logLine('INFO', '已启动服务：' + cfg.runtimePath + ' ' + args.join(' ') + '（device=' + cfg.device + '，日志 ' + logFile + '）');
       broadcast();
       return { ok: true, log: logFile };
     } catch (e) { return { ok: false, error: e && e.message }; }
@@ -205,7 +261,7 @@ function createTtsManager(ctx) {
   function stopService(reason) {
     try { if (proc && !proc.killed) { proc.kill(); } } catch (e) { /* noop */ }
     proc = null;
-    if (reason) console.log('[TTS] service stopped:', reason);
+    if (reason) { logLine('INFO', '已停止服务：' + reason); }
     broadcast();
     return { ok: true };
   }
@@ -279,7 +335,7 @@ function createTtsManager(ctx) {
     const asUrl = (p2) => 'pet://tts/' + (cfg.saveByRole ? (role + '/') : '') + pathMod.basename(p2);
     const target = cacheTarget(role, mood || 'neutral', clean, key);
     const hit = findCached(target);
-    if (hit) return { ok: true, file: hit, url: asUrl(hit), cached: true };
+    if (hit) { logLine('DEBUG', '缓存命中 [' + role + '/' + (mood || 'neutral') + '] ' + pathMod.basename(hit)); return { ok: true, file: hit, url: asUrl(hit), cached: true }; }
     const cacheFile = target.file;
 
     if (!(await probe())) {
@@ -297,7 +353,7 @@ function createTtsManager(ctx) {
         const t0 = Date.now();
         while (Date.now() - t0 < waitMs) {
           await new Promise((r) => setTimeout(r, 1000));
-          if (await probe()) break;
+          if (await probe()) { probeFailCount = 0; break; }
         }
       }
       if (!lastStatus.running) return { ok: false, error: lastStatus.lastError ? ('服务不可用：' + lastStatus.lastError) : '服务不可用（启动超时或端口被占用）' };
@@ -340,9 +396,12 @@ function createTtsManager(ctx) {
     const r = await httpJsonOnce({ method: 'POST', host: cfg.host, port: cfg.port, pathName, timeoutMs: 120000, body: cfg.refMode === 'query' ? undefined : body });
     touchIdle();
     if (!r.ok || !r.buf || r.buf.length < 512) {
-      return { ok: false, error: r.error || ('HTTP ' + r.status + (r.buf ? ' ' + r.buf.toString('utf8').slice(0, 200) : '')) };
+      const err = r.error || ('HTTP ' + r.status + (r.buf ? ' ' + r.buf.toString('utf8').slice(0, 200) : ''));
+      logLine('ERROR', '合成失败 [' + role + '/' + (mood || 'neutral') + '] ' + err);
+      return { ok: false, error: err };
     }
     try { fsMod.writeFileSync(cacheFile, r.buf); } catch (e) { /* noop */ }
+    logLine('INFO', '合成成功 [' + role + '/' + (mood || 'neutral') + '] ' + clean.slice(0, 24) + '… → ' + (r.buf.length / 1024).toFixed(0) + 'KB');
     return { ok: true, file: cacheFile, url: asUrl(cacheFile), bytes: r.buf.length };
   }
 
@@ -365,10 +424,47 @@ function createTtsManager(ctx) {
       port: cfg.port,
       dataRoot: dataRoot(),
       voicesRoot: voicesRoot(),
+      logsFile: logFilePath(),
+      installed: { runtime: isRuntimeInstalled(), voices: { airui: isVoiceInstalled('airui'), qianxia: isVoiceInstalled('qianxia'), nangong: isVoiceInstalled('nangong') } },
       hasVoices: ['airui', 'qianxia', 'nangong'].some((r) => !!loadEmotions(r)),
       // 仅在"确实探测失败且未在启动中"时提示错误，避免未运行时一直显示陈旧的连接错误
       lastError: (state === 'stopped' && lastStatus.checkedAt && lastStatus.lastError) ? lastStatus.lastError : '',
       config: cfg
+    };
+  }
+
+  // ===== 安装状态检测（避免用户重复下载 6GB+）=====
+  function isRuntimeInstalled() {
+    try {
+      return fsMod.existsSync(pathMod.join(dataRoot(), 'runtime', 'python.exe')) &&
+             fsMod.existsSync(pathMod.join(dataRoot(), 'api_v2.py'));
+    } catch (e) { return false; }
+  }
+  function runtimeDirCandidates() {
+    return [pathMod.join(dataRoot(), 'runtime', 'python.exe'), pathMod.join(legacyTtsDir, 'runtime', 'python.exe')];
+  }
+  function isVoiceInstalled(role) {
+    try {
+      return voicesCandidates().some((c) => fsMod.existsSync(pathMod.join(c, role, 'emotions.json')));
+    } catch (e) { return false; }
+  }
+  // 下载进度：附加"速度/剩余时间"（每卷重新采样）
+  let dlSample = { t: 0, got: 0 };
+  function progressReporter(tag, part, parts) {
+    return (got, total) => {
+      const now = Date.now();
+      let speed = 0, eta = 0;
+      if (dlSample.t && now > dlSample.t && got >= dlSample.got) {
+        speed = (got - dlSample.got) / ((now - dlSample.t) / 1000);
+        if (total > 0 && speed > 0) eta = (total - got) / speed;
+      }
+      if (!dlSample.t || now - dlSample.t > 1200) dlSample = { t: now, got };
+      setInstall({
+        phase: 'download', part, parts, got, total,
+        speed: Math.round(speed), eta: Math.round(eta),
+        message: (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB')
+      });
+      if (total > 0 && got >= total) logLine('INFO', tag + '下载完成 ' + (total / 1048576).toFixed(0) + 'MB');
     };
   }
 
@@ -486,24 +582,32 @@ function createTtsManager(ctx) {
     return withMirror(base + '/releases/download/' + cfg.voiceTag + '/tts_voices_' + role + '.zip');
   }
   // 下载并解压一个语音包到 <userData>/tts/voices/<role>/
-  async function installVoice(role) {
+  async function installVoice(role, opts) {
+    const force = !!(opts && opts.force);
     const url = buildVoiceUrl(role);
     if (!url) return { ok: false, error: '未配置仓库地址' };
+    if (!force && isVoiceInstalled(role)) {
+      logLine('INFO', '语音包[' + role + '] 已存在 → 跳过下载');
+      setInstall({ phase: 'done', message: '语音包[' + role + '] 已安装（跳过）' });
+      return { ok: true, skipped: true, message: '语音包已安装，未重复下载' };
+    }
     const root = pathMod.join(dataRoot(), 'voices');       // 项目内 voices 目录
     const zipPath = pathMod.join(dataRoot(), '_voice_' + role + '.zip');
     try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
     try {
-      setInstall({ phase: 'download', got: 0, total: 0, message: '语音包[' + role + '] 下载中…' });
-      const r = await downloadTo(url, zipPath, (got, total) => {
-        setInstall({ phase: 'download', got, total, message: '语音包[' + role + '] ' + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
-      });
+      dlSample = { t: 0, got: 0 };
+      setInstall({ phase: 'download', part: 1, parts: 1, got: 0, total: 0, speed: 0, eta: 0, message: '语音包[' + role + '] 开始下载…' });
+      logLine('INFO', '语音包[' + role + '] 下载：' + url);
+      const r = await downloadTo(url, zipPath, progressReporter('语音包[' + role + '] ', 1, 1));
       setInstall({ phase: 'extract', got: r.bytes, total: r.bytes, message: '语音包[' + role + '] 解压中…' });
       await expandArchive(zipPath, root);
       try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
+      logLine('INFO', '语音包[' + role + '] 安装完成');
       setInstall({ phase: 'done', message: '语音包[' + role + '] 安装完成' });
       broadcast();
       return { ok: true, role, dir: pathMod.join(root, role) };
     } catch (e) {
+      logLine('ERROR', '语音包[' + role + '] 安装失败：' + (e && e.message));
       setInstall({ phase: 'error', message: String(e && e.message).slice(0, 200) });
       return { ok: false, error: String(e && e.message) };
     }
@@ -515,34 +619,46 @@ function createTtsManager(ctx) {
     if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean);
     return String(v || '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
   }
-  async function installFromUrl(urlOrUrls) {
+  async function installFromUrl(urlOrUrls, opts) {
+    const force = !!(opts && opts.force);
     const urls = parseUrls(urlOrUrls);
     if (!urls.length) return { ok: false, error: '未提供下载地址' };
+    // 已安装 → 默认跳过（避免用户白等几 GB）；控制台可点"重新下载"
+    if (!force && isRuntimeInstalled()) {
+      logLine('INFO', '推理环境已存在 → 跳过下载（如需覆盖请选择"重新下载"）');
+      setInstall({ phase: 'done', message: '已安装（跳过下载）' });
+      return { ok: true, skipped: true, message: '推理环境已安装，未重复下载' };
+    }
     const root = dataRoot();
     const zipPath = pathMod.join(dataRoot(), '_download.zip');
     try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
     try {
+      logLine('INFO', '开始下载推理环境（' + urls.length + ' 个分包）' + (force ? ' [强制重下]' : ''));
       for (let i = 0; i < urls.length; i++) {
         const tag = urls.length > 1 ? ('第 ' + (i + 1) + '/' + urls.length + ' 包 ') : '';
-        setInstall({ phase: 'download', part: i + 1, parts: urls.length, got: 0, total: 0, message: tag + '开始下载…' });
-        const r = await downloadTo(urls[i], zipPath, (got, total) => {
-          setInstall({ phase: 'download', part: i + 1, parts: urls.length, got, total, message: tag + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
-        });
+        dlSample = { t: 0, got: 0 };
+        setInstall({ phase: 'download', part: i + 1, parts: urls.length, got: 0, total: 0, speed: 0, eta: 0, message: tag + '开始下载…' });
+        logLine('INFO', tag + '下载：' + urls[i]);
+        const r = await downloadTo(urls[i], zipPath, progressReporter(tag, i + 1, urls.length));
         setInstall({ phase: 'extract', part: i + 1, parts: urls.length, got: r.bytes, total: r.bytes, message: tag + '解压中…' });
+        logLine('INFO', tag + '解压中…');
         await expandArchive(zipPath, root);
         try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
       }
       setInstall({ phase: 'detect', message: '全部解压完成，正在探测运行时…' });
       const det = detectRuntime(root);
       if (!det.python || !det.script) {
+        logLine('ERROR', '未找到 python.exe 或 api_v2.py（压缩包内容不符）');
         setInstall({ phase: 'error', message: '未找到 python.exe 或 api_v2.py（请确认压缩包内容）' });
         return { ok: false, error: '未找到运行时/脚本', detected: det };
       }
       save({ mode: 'managed', runtimePath: det.python, serverScript: det.script, enabled: true });
-      ensureInferConfig(root, cfg.device);      // 切到 v2ProPlus 推理配置（音色正确的前提）
+      const okCfg = ensureInferConfig(root, cfg.device);
+      logLine('INFO', '安装完成：runtime=' + det.python + '，推理配置切换 v2ProPlus=' + okCfg);
       setInstall({ phase: 'done', message: '安装完成，可直接使用' });
-      return { ok: true, runtimePath: det.python, serverScript: det.script };
+      return { ok: true, runtimePath: det.python, serverScript: det.script, inferConfig: okCfg };
     } catch (e) {
+      logLine('ERROR', '推理环境安装失败：' + (e && e.message));
       setInstall({ phase: 'error', message: String(e && e.message).slice(0, 200) });
       return { ok: false, error: String(e && e.message) };
     }
@@ -613,9 +729,18 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-stop', () => stopService('manual'));
     ipcMain.handle('tts-speak', (e, payload) => synthesize(payload || {}));
     ipcMain.handle('tts-emotions', (e, role) => loadEmotions(role));
-    ipcMain.handle('tts-install', (e, url) => installFromUrl(url || buildRuntimeUrls()));
-    ipcMain.handle('tts-install-runtime', () => installFromUrl(buildRuntimeUrls()));
-    ipcMain.handle('tts-install-voice', (e, role) => installVoice(String(role || '')));
+    ipcMain.handle('tts-install', (e, arg) => installFromUrl((arg && arg.urls) || arg || buildRuntimeUrls(), { force: !!(arg && arg.force) }));
+    ipcMain.handle('tts-install-runtime', (e, opts) => installFromUrl(buildRuntimeUrls(), { force: !!(opts && opts.force) }));
+    ipcMain.handle('tts-install-voice', (e, role, opts) => installVoice(String(role || ''), { force: !!(opts && opts.force) }));
+    ipcMain.handle('tts-get-logs', (e, lines) => readLogs(lines || 300));
+    ipcMain.handle('tts-open-logs', () => {
+      try {
+        const { shell } = require('electron');
+        const f = logFilePath();
+        if (fsMod.existsSync(f)) shell.showItemInFolder(f); else shell.openPath(logDirPath());
+        return { ok: true, file: f };
+      } catch (err) { return { ok: false, error: err && err.message }; }
+    });
     ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
     ipcMain.handle('tts-check-update', () => checkUpdate());
     ipcMain.handle('open-external', (e, url) => { try { require('electron').shell.openExternal(String(url || '')); return { ok: true }; } catch (err) { return { ok: false, error: err && err.message }; } });

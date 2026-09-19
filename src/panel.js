@@ -93,9 +93,27 @@
 
   // ================= 设置页：语音（TTS） =================
   const ttsEl = (id) => document.getElementById(id);
+  let lastTtsStatus = null;   // 最近一次状态（用于"是否已安装"等交互判断）
   function renderTts(s) {
     if (!s) return;
+    lastTtsStatus = s;
     const c = s.config || {};
+    // 安装状态：已装则隐藏"一键下载"、显示"重新下载"与提示；语音包按钮加 ✅
+    const ins = s.installed || {};
+    const hint = ttsEl('tts-installed-hint');
+    if (hint) {
+      hint.textContent = ins.runtime
+        ? '✅ 推理环境已安装（重复点下载会自动跳过；需要覆盖请点「🔄 重新下载」）'
+        : '⚠ 尚未安装推理环境 —— 点「⬇ 一键下载推理环境」即可自动装好（约 5.45 GB）';
+    }
+    if (ttsEl('tts-install')) ttsEl('tts-install').style.display = ins.runtime ? 'none' : '';
+    if (ttsEl('tts-reinstall')) ttsEl('tts-reinstall').style.display = ins.runtime ? '' : 'none';
+    document.querySelectorAll('.tts-voice-btn').forEach((b) => {
+      const role = b.dataset.role;
+      const base = { airui: '爱芮', qianxia: '千夏', nangong: '南宫羽' }[role] || role;
+      const has = !!(ins.voices && ins.voices[role]);
+      if (!b.disabled) b.textContent = (has ? '✅ ' : '') + base;
+    });
     if (ttsEl('tts-enabled')) ttsEl('tts-enabled').checked = !!c.enabled;
     if (ttsEl('tts-host')) ttsEl('tts-host').value = c.host || '127.0.0.1';
     if (ttsEl('tts-port')) ttsEl('tts-port').value = c.port || 9880;
@@ -239,8 +257,18 @@
     const msg = ttsEl('tts-install-msg');
     if (bar) bar.style.width = (s.total ? Math.min(100, Math.round((s.got / s.total) * 100)) : (s.phase === 'done' ? 100 : 0)) + '%';
     const partTag = (s.parts > 1 && s.part) ? ('【包 ' + s.part + '/' + s.parts + '】') : '';
-    const label = ({ idle: '下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用', download: '下载中…', extract: '解压中…', detect: '探测运行时…', done: '✅ 安装完成，可直接使用', error: '❌ ' + (s.message || '失败') }[s.phase] || s.message || '');
-    if (msg) msg.textContent = partTag + label + ((s.phase === 'download' && s.message) ? '（' + String(s.message).replace(/^第 \d+\/\d+ 包 /, '') + '）' : '');
+    const label = ({ idle: '下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用', download: '下载中…', extract: '解压中…', detect: '探测运行时…', done: '✅ ' + (s.message || '安装完成'), error: '❌ ' + (s.message || '失败') }[s.phase] || s.message || '');
+    // 进度细节：百分比 + 已下载/总大小 + 速度 + 剩余时间
+    let detail = '';
+    if (s.phase === 'download') {
+      const mb = (v) => (v / 1048576).toFixed(1);
+      const sp = s.speed > 0 ? (s.speed >= 1048576 ? (s.speed / 1048576).toFixed(1) + ' MB/s' : Math.round(s.speed / 1024) + ' KB/s') : '';
+      const eta = s.eta > 0 ? ('剩 ' + (s.eta >= 60 ? Math.round(s.eta / 60) + ' 分' : s.eta + ' 秒')) : '';
+      detail = [s.total ? (mb(s.got) + ' / ' + mb(s.total) + ' MB') : (mb(s.got) + ' MB'), sp, eta].filter(Boolean).join('　');
+    } else if (s.phase === 'extract' && s.total) {
+      detail = ((s.total / 1048576).toFixed(1) + ' MB 解压中（大文件较慢，请稍候）');
+    }
+    if (msg) msg.textContent = partTag + label + (detail ? '　' + detail : '');
   }
   try { dk.onTtsInstallProgress(renderInstall); } catch (e) { /* noop */ }
   (async () => { try { renderInstall(await dk.ttsInstallState()); } catch (e) { /* noop */ } })();
@@ -249,22 +277,58 @@
     if (!repo) { alert('请先填写仓库地址（形如 https://github.com/<用户名>/<仓库名>）'); return; }
     try {
       await dk.ttsConfig(ttsCollect());                     // 保存仓库地址与下载源
-      const r = await dk.ttsInstallRuntime();               // 自动拼装分卷地址并依次下载
-      if (r && !r.ok) alert('安装失败：' + (r.error || ''));
+      const r = await dk.ttsInstallRuntime();               // 自动拼装分卷地址；已安装会自动跳过
+      if (r && r.skipped) { alert('推理环境已安装，未重复下载 ✓\n（如需重新下载请点「🔄 重新下载」）'); }
+      else if (r && !r.ok) alert('安装失败：' + (r.error || '') + '\n\n可点「📜 后台日志」查看详细过程');
     } catch (e) { alert('安装异常：' + (e && e.message)); }
     refreshTts();
   });
-  // 语音包（按需下载单只）
+  // 重新下载（强制覆盖）
+  if (ttsEl('tts-reinstall')) ttsEl('tts-reinstall').addEventListener('click', async () => {
+    if (!confirm('将重新下载并覆盖推理环境（约 5.45 GB），确定吗？\n\n如果是想修复问题，通常只需要「重新启动服务」即可。')) return;
+    try {
+      await dk.ttsConfig(ttsCollect());
+      const r = await dk.ttsInstallRuntime({ force: true });
+      if (r && !r.ok) alert('安装失败：' + (r.error || ''));
+    } catch (e) { alert('异常：' + (e && e.message)); }
+    refreshTts();
+  });
+  // ===== 后台日志面板 =====
+  let logTimer = null;
+  async function refreshLogs() {
+    const box = ttsEl('tts-logbox');
+    if (!box || box.style.display === 'none') return;
+    try { const t = await dk.ttsGetLogs(300); box.textContent = t; box.scrollTop = box.scrollHeight; } catch (e) { /* noop */ }
+  }
+  if (ttsEl('tts-logs-toggle')) ttsEl('tts-logs-toggle').addEventListener('click', () => {
+    const box = ttsEl('tts-logbox');
+    if (!box) return;
+    const show = box.style.display === 'none';
+    box.style.display = show ? 'block' : 'none';
+    ttsEl('tts-logs-toggle').textContent = show ? '📜 收起日志' : '📜 后台日志';
+    if (show) { refreshLogs(); logTimer = setInterval(refreshLogs, 2000); }
+    else if (logTimer) { clearInterval(logTimer); logTimer = null; }
+  });
+  if (ttsEl('tts-open-logs')) ttsEl('tts-open-logs').addEventListener('click', async () => { try { await dk.ttsOpenLogs(); } catch (e) { /* noop */ } });
+  // 语音包（按需下载单只；已安装会先确认再覆盖）
   document.querySelectorAll('.tts-voice-btn').forEach((b) => b.addEventListener('click', async () => {
     const repo = (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '';
     if (!repo) { alert('请先填写仓库地址'); return; }
     const role = b.dataset.role;
+    const nameMap = { airui: '爱芮', qianxia: '千夏', nangong: '南宫羽' };
+    const st = (lastTtsStatus && lastTtsStatus.installed && lastTtsStatus.installed.voices) || {};
+    let force = false;
+    if (st[role]) {
+      if (!confirm('语音包【' + (nameMap[role] || role) + '】已安装，是否重新下载覆盖？')) return;
+      force = true;
+    }
     b.disabled = true;
     try {
       await dk.ttsConfig(ttsCollect());
-      const r = await dk.ttsInstallVoice(role);
-      if (r && !r.ok) alert('语音包下载失败：' + (r.error || ''));
-      else alert('语音包已安装：' + role);
+      const r = await dk.ttsInstallVoice(role, { force });
+      if (r && r.skipped) alert('语音包已安装，未重复下载 ✓');
+      else if (r && !r.ok) alert('语音包下载失败：' + (r.error || '') + '\n\n可点「📜 后台日志」查看详情');
+      else alert('语音包已安装：' + (nameMap[role] || role) + ' ✓');
     } catch (e) { alert('异常：' + (e && e.message)); }
     b.disabled = false;
     refreshTts();
