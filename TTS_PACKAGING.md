@@ -39,7 +39,7 @@ GPT_SoVITS\                全部代码（TTS_infer_pack/AR/module/eres2net/BigV
 GPT_SoVITS\pretrained_models\  v2Pro\（s2Gv2ProPlus.pth 等） · sv\ · s1v3.ckpt ·
                                chinese-hubert-base\ · chinese-roberta-wwm-ext-large\ · fast_langdetect\
 api_v2.py  config.py  requirements.txt  LICENSE
-好
+
 ```
 
 **删除**
