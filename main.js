@@ -841,6 +841,8 @@ app.whenReady().then(() => {
         const [role, text, mood] = String(process.env.QX_TTS_TEST).split('|');
         const r = await tts.synthesize({ role: role || 'qianxia', text: text || '测试语音', mood: mood || 'happy' });
         console.log('[TTS-TEST]', JSON.stringify(r).slice(0, 400));
+        // 顺便让桌宠窗口播出来（验证渲染侧播放链路）
+        try { if (r && r.ok && r.url && win && !win.isDestroyed()) win.webContents.send('tts-test-play', r.url); } catch (e) { /* noop */ }
       }, 8000);
     }
   } catch (e) { console.error('[TTS] init failed', e); }

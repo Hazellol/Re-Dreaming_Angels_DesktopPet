@@ -920,6 +920,18 @@
       console.log('[TTS] speak', role, mood || 'neutral', r.cached ? '(cached)' : '');
     } catch (e) { /* noop */ }
   }
+  // 调试：QX_TTS_TEST 时主进程把合成结果发过来直接播放（验证渲染侧播放链路）
+  try {
+    dk.onTtsTestPlay((url) => {
+      try {
+        stopTts();
+        const a = new Audio(url);
+        a.volume = Math.min(1, (audioCfg.master / 100) * Math.max(0.2, ttsVolume));
+        currentTtsAudio = a;
+        a.play().then(() => console.log('[TTS] test-play ok')).catch((e) => console.log('[TTS] test-play blocked:', e && e.message));
+      } catch (e) { /* noop */ }
+    });
+  } catch (e) { /* noop */ }
   function playPat(key) {
     const files = AUDIO_FILES.pat[key];
     if (!files) return;

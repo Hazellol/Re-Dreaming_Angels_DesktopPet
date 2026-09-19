@@ -153,6 +153,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   ttsSpeak: (payload) => ipcRenderer.invoke('tts-speak', payload),
   ttsEmotions: (role) => ipcRenderer.invoke('tts-emotions', role),
   onTtsStatus: (cb) => ipcRenderer.on('tts-status', (e, s) => cb(s)),
+  onTtsTestPlay: (cb) => ipcRenderer.on('tts-test-play', (e, url) => cb(url)),
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
   closePanel: () => ipcRenderer.send('panel-close'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),

@@ -200,14 +200,17 @@ LLM 回复（含 <mood:happy>）→ 角色 + mood → emotions.json 里挑一条
 | `tools/build_voicepack.mjs` | 组装语音包：`tts_out/<role>/{emotions.json, refs/, models/, pack.json}` |
 | `tools/mock_tts_server.mjs` | 无 GPT-SoVITS 环境时的**假服务**（返回静音 wav），用于验证桌宠侧链路 |
 
-### 9.2 端到端验证（已通过）
+### 9.2 端到端验证（已通过 · 含**真实 GPT-SoVITS 服务**）
 
 ```
 [TTS] manager ready (enabled = true)
-[TTS-TEST] {"ok":true,"url":"pet://tts/5f4965….wav","bytes":51244}
-[MOCK-TTS] text="你好呀，今天也要开心哦！" ref=…_111701011_001.wav prompt="我见过那个！…"
+[TTS-TEST] {"ok":true,"url":"pet://tts/e7b4478f8128ff7cbe7c.wav","bytes":149804}
+[TTS] test-play ok                                  ← 渲染侧播放成功（扬声器出声）
 ```
-→ 探活 / **情绪映射选参考** / 请求格式 / 音频返回 / 缓存 / pet:// 播放地址 **全链路打通** ✓
+- **Mock 服务**：验证桌宠侧链路（情绪映射→选参考→请求格式→缓存→播放）✓
+- **真实服务（用户环境 127.0.0.1:9880）**：happy / shy 两种情绪分别合成 **172KB / 146KB** 真实语音并成功播放 ✓
+  → 说明**用户的 v2ProPlus 模型 + 我们的参数格式可以直接工作**，无需额外适配 ✓
+- 注：该服务没有 `/health` 接口 → 探活把 **404 也视为"在跑"**（已容错）✓
 
 ### 9.3 主人如何试
 

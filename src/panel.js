@@ -93,6 +93,16 @@
     if (ttsEl('tts-on-chatter')) ttsEl('tts-on-chatter').checked = !!(c.speakOn && c.speakOn.chatter);
     document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mode === (c.mode || 'external')));
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.classList.toggle('pink', b.dataset.device === (c.device || 'cuda')));
+    // 按钮语义：external（已有服务）模式下"启动服务"无意义 → 禁用并给出提示（用户实测困惑点）
+    const isManaged = (c.mode || 'external') === 'managed';
+    const startBtn = ttsEl('tts-start');
+    if (startBtn) {
+      startBtn.disabled = !isManaged;
+      startBtn.style.opacity = isManaged ? '' : '.45';
+      startBtn.title = isManaged ? '启动桌宠自带的 TTS 服务（便携包）' : '当前是「已有服务」模式：请在外部启动 GPT-SoVITS，或切到「桌宠启动」';
+    }
+    const stopBtn = ttsEl('tts-stop');
+    if (stopBtn) stopBtn.title = isManaged ? '停止桌宠启动的服务' : '当前是「已有服务」模式：服务由外部管理';
     if (ttsEl('tts-adv')) {
       try {
         ttsEl('tts-adv').value = JSON.stringify({
