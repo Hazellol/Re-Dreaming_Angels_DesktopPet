@@ -140,6 +140,10 @@ contextBridge.exposeInMainWorld('deskpet', {
   setMaxFps: (v) => ipcRenderer.send('set-max-fps', v),
   onMaxFps: (cb) => ipcRenderer.on('max-fps', (e, v) => cb(v)),
   onOccluded: (cb) => ipcRenderer.on('occluded', (e, v) => cb(v)),
+  // 多显示器：运行屏幕设置 / 显示器信息 / 窗口跨屏后的角色坐标补偿
+  setScreenMode: (mode) => ipcRenderer.invoke('set-screen-mode', mode),
+  getScreenInfo: () => ipcRenderer.invoke('get-screen-info'),
+  onWindowMoved: (cb) => ipcRenderer.on('window-moved', (e, info) => cb(info)),
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
   closePanel: () => ipcRenderer.send('panel-close'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),

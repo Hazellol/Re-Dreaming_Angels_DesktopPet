@@ -183,6 +183,10 @@ function startMousePoll() {
 if (process.env.QX_IDOLSHIDE === '1') {
   setTimeout(() => { try { setIdolsShown(false); console.log('[DBG] all idols hidden (QX_IDOLSHIDE)'); } catch (e) { /* noop */ } }, 5000);
 }
+// 调试：QX_SCREENMODE=primary|secondary|follow → 启动后自动应用运行屏幕（便于自动化验证多屏）
+if (process.env.QX_SCREENMODE) {
+  setTimeout(() => { try { console.log('[DBG] apply screen mode:', process.env.QX_SCREENMODE); applyScreenMode(process.env.QX_SCREENMODE); } catch (e) { /* noop */ } }, 3000);
+}
 
 // ===== 遮挡检测：被其它窗口完全覆盖时暂停渲染（用户要求的省电优化）=====
 // 用 powershell 每 5s 枚举上层可见窗口，判断桌宠窗口矩形是否被完全覆盖。
@@ -475,6 +479,20 @@ function mousePollTick() {
     }
   }
   mousePollTicks++;
+  // 跟随角色模式：**拖动中用鼠标所在屏**驱动窗口跟随。
+  // （不能用角色位置：窗口在主屏时角色被窗口边界卡住，永远到不了副屏 → 死锁。）
+  if (screenMode === 'follow' && hitForceInteractive && Date.now() - lastFollowSwitchAt >= 1500) {
+    try {
+      const gp = screen.getCursorScreenPoint();
+      const b = win.getBounds();
+      const d = screen.getDisplayNearestPoint(gp);
+      const cur = screen.getDisplayNearestPoint({ x: Math.round(b.x + 2), y: Math.round(b.y + 2) });
+      if (d && cur && d.id !== cur.id) {
+        lastFollowSwitchAt = Date.now();
+        moveWindowToDisplay(d, 'follow(cursor)');
+      }
+    } catch (e) { /* noop */ }
+  }
   // 注意：**不能**用"鼠标在她们区域内"来解除遮挡暂停——被覆盖时鼠标坐标同样落在她们矩形上，
   // 但视觉上并不可见（早期版本据此解除，导致"刚暂停就恢复"）。恢复只走遮挡检测（≤3s）或用户交互。
   // 每 ~1s 强制重下发一次：幂等操作，用于修复被其它程序（截图工具/捕获鼠标）扰动后的平台状态漂移
@@ -539,6 +557,63 @@ function winScaleFactor() {
   } catch (e) {
     return (screen.getPrimaryDisplay() || {}).scaleFactor || 1;
   }
+}
+
+// ===== 多显示器：运行屏幕（'primary' 主屏 / 'secondary' 副屏 / 'follow' 跟随角色）=====
+let screenMode = 'primary';
+function screensInfo() {
+  const all = screen.getAllDisplays();
+  const primary = screen.getPrimaryDisplay();
+  const secondary = all.find((d) => d.id !== primary.id) || null;
+  return { all, primary, secondary };
+}
+// 切换窗口到目标显示器工作区，并通知 renderer 平移角色坐标（保持屏幕位置不变 → 视觉无跳动）
+function moveWindowToDisplay(target, reason) {
+  if (!win || win.isDestroyed() || !target) return;
+  const before = win.getBounds();
+  const wa = target.workArea || target.bounds;
+  if (before.x === wa.x && before.y === wa.y && before.width === wa.width && before.height === wa.height) return;
+  try {
+    win.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
+  } catch (e) { console.log('[SCREEN] setBounds failed:', e && e.message); return; }
+  const after = win.getBounds();
+  const dx = before.x - after.x;                     // 世界/角色坐标补偿量（见 renderer 说明）
+  const dy = before.y - after.y;
+  const dh = before.height - after.height;
+  console.log('[SCREEN]', reason || 'move', '→', after.width + 'x' + after.height + '@' + after.x + ',' + after.y);
+  try {
+    if (win.webContents && !win.webContents.isDestroyed()) {
+      win.webContents.send('window-moved', { dx, dy, dh, width: after.width, height: after.height });
+    }
+  } catch (e) { /* noop */ }
+  regionKey = '';   // 尺寸/位置变化 → 下次重算窗口区域
+}
+function applyScreenMode(mode) {
+  screenMode = (mode === 'secondary' || mode === 'follow') ? mode : 'primary';
+  const { primary, secondary } = screensInfo();
+  if (screenMode === 'secondary') {
+    moveWindowToDisplay(secondary || primary, 'mode=secondary');
+    return screenMode;
+  }
+  if (screenMode === 'primary') {
+    moveWindowToDisplay(primary, 'mode=primary');
+    return screenMode;
+  }
+  return screenMode;   // follow：由主进程在角色位置更新时自动切换
+}
+// 跟随模式：把窗口贴到"角色所在显示器"（由 hit-rects 的角色包围盒中心判定）
+let lastFollowSwitchAt = 0;
+function followIdolDisplay(centerX, centerY) {
+  if (screenMode !== 'follow' || !win || win.isDestroyed()) return;
+  if (Date.now() - lastFollowSwitchAt < 1500) return;   // 防抖：1.5s 内不重复切换（避免边界处来回跳）
+  try {
+    const b = win.getBounds();
+    const d = screen.getDisplayNearestPoint({ x: Math.round(b.x + centerX), y: Math.round(b.y + centerY) });
+    const cur = screen.getDisplayNearestPoint({ x: Math.round(b.x + 2), y: Math.round(b.y + 2) });
+    if (!d || !cur || d.id === cur.id) return;
+    lastFollowSwitchAt = Date.now();
+    moveWindowToDisplay(d, 'follow');
+  } catch (e) { /* noop */ }
 }
 
 function createWindow() {
@@ -797,6 +872,17 @@ app.whenReady().then(() => {
   ipcMain.on('panel-close', () => {
     if (panel && !panel.isDestroyed()) panel.close();
   });
+  // 多显示器：运行屏幕设置 + 显示器信息查询
+  ipcMain.handle('set-screen-mode', (e, mode) => applyScreenMode(mode));
+  ipcMain.handle('get-screen-info', () => {
+    const { all, primary, secondary } = screensInfo();
+    return {
+      mode: screenMode,
+      count: all.length,
+      primary: { id: primary.id, w: primary.workArea.width, h: primary.workArea.height, sf: primary.scaleFactor },
+      secondary: secondary ? { id: secondary.id, w: secondary.workArea.width, h: secondary.workArea.height, sf: secondary.scaleFactor } : null
+    };
+  });
   // 控制台：按需打开（右键菜单入口）+ 显示/隐藏小偶像的状态查询与设置
   ipcMain.on('open-panel', () => ensurePanel());
   ipcMain.handle('get-idols-shown', () => !idolsAllHidden);
@@ -1011,6 +1097,15 @@ app.whenReady().then(() => {
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
     hitRectsMoving = !!payload.moving;   // 角色物理运动中（重力甩飞/下落）→ 区域用大边距
     applyWindowRegion(hitRects);   // 窗口形状 = 角色/浮层矩形并集（修 K1 视频黑屏：形状外不参与合成）
+    // 跟随角色模式：角色跑到另一块屏时把窗口贴过去（拖动/走动的角色矩形都在 hitRects 里）
+    if (hitRects.length && !hitForceInteractive) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const r of hitRects) {
+        minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+      }
+      if (isFinite(minX)) followIdolDisplay((minX + maxX) / 2, (minY + maxY) / 2);
+    }
     const f = !!payload.force;
     if (f && !hitForceInteractive) hitForceSince = Date.now();
     if (!f) hitForceSince = 0;

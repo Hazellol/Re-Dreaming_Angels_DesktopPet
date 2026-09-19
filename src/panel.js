@@ -77,6 +77,43 @@
     });
   });
 
+  // ================= 设置页：多显示器（运行屏幕） =================
+  const screenBtns = Array.from(document.querySelectorAll('#set-screen-modes .screen-mode'));
+  function renderScreenMode(mode) {
+    const m = (mode === 'secondary' || mode === 'follow') ? mode : 'primary';
+    screenBtns.forEach((b) => b.classList.toggle('pink', b.getAttribute('data-mode') === m));
+    try { localStorage.setItem('QX_SCREENMODE', m); } catch (e) { /* noop */ }
+    return m;
+  }
+  (async () => {
+    try {
+      const info = await dk.getScreenInfo();
+      const hasSec = !!(info && info.secondary);
+      const hint = document.getElementById('set-screen-hint');
+      for (const b of screenBtns) {
+        const needSec = b.getAttribute('data-mode') !== 'primary';
+        b.disabled = needSec && !hasSec;
+        b.style.opacity = (needSec && !hasSec) ? '.45' : '';
+      }
+      if (hint) {
+        hint.textContent = hasSec
+          ? `检测到 ${info.count} 块屏幕：主屏 ${info.primary.w}×${info.primary.h}（缩放 ${info.primary.sf}x）· 副屏 ${info.secondary.w}×${info.secondary.h}（缩放 ${info.secondary.sf}x）。「跟随角色」= 她们走到/被拖到另一块屏时窗口自动贴过去`
+          : '当前只有一块屏幕（副屏 / 跟随角色 不可用）';
+      }
+      let saved = 'primary';
+      try { saved = localStorage.getItem('QX_SCREENMODE') || 'primary'; } catch (e) { /* noop */ }
+      renderScreenMode(saved);
+      try { await dk.setScreenMode(saved); } catch (e) { /* noop */ }
+    } catch (e) { /* noop */ }
+  })();
+  for (const b of screenBtns) {
+    b.addEventListener('click', async () => {
+      if (b.disabled) return;
+      const m = renderScreenMode(b.getAttribute('data-mode'));
+      try { await dk.setScreenMode(m); } catch (e) { /* noop */ }
+    });
+  }
+
   // ================= 三小只开关卡片 =================
   const cardsEl = document.getElementById('cards');
   const map = {};

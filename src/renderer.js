@@ -36,6 +36,26 @@
   }
   window.addEventListener('resize', resize);
 
+  // ===== 多显示器：窗口跨屏后，把角色坐标做补偿，保证她们在屏幕上的位置不变 =====
+  // 坐标关系：屏幕 x = winX + container.x；屏幕 y = winY + (viewH - container.y)
+  // 主进程发来 { dx, dy, dh }（旧 - 新，窗口原点与高度差）→
+  //   container.x -= dx；container.y += (dh - dy)
+  try {
+    dk.onWindowMoved((info) => {
+      if (!info) return;
+      const dx = info.dx || 0, dy = info.dy || 0, dh = info.dh || 0;
+      for (const k of ROLE_KEYS) {
+        const c = idols[k];
+        if (!c) continue;
+        c.container.x -= dx;
+        c.container.y += (dh - dy);
+      }
+      resize();                       // 窗口尺寸随之变化（另一块屏的工作区尺寸）
+      reportHitRects(true);           // 立即上报新矩形（区域/命中判定跟上）
+      console.log('[SCREEN] window moved → compensated dx=' + dx + ' dy=' + dy + ' dh=' + dh);
+    });
+  } catch (e) { /* noop */ }
+
   const mvp = new Float32Array(16);
   function buildMVP(key) {
     const c = idols[key];
@@ -2511,6 +2531,11 @@
 
     // 保持置顶（记忆应用；菜单可切换）
     dk.setTopmost(topmostOn);
+    // 多显示器：应用记忆的"运行屏幕"（主屏/副屏/跟随角色）
+    try {
+      const sm = localStorage.getItem('QX_SCREENMODE');
+      if (sm) dk.setScreenMode(sm);
+    } catch (e) { /* noop */ }
 
     // 初始站位（下沿分布：22% / 50% / 78%）
     resize();

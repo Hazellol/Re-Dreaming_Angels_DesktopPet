@@ -335,6 +335,18 @@
       <!-- 设置视图 -->
       <div id="view-settings" class="view" style="display:none;">
         <div class="ai-card">
+          <h3>🖥 多显示器</h3>
+          <div class="ai-row" style="align-items:flex-start;">
+            <label>运行屏幕</label>
+            <div class="ai-btns" id="set-screen-modes" style="flex:1;margin:0;">
+              <button class="ai-btn small screen-mode" data-mode="primary">主显示器</button>
+              <button class="ai-btn small screen-mode" data-mode="secondary">副显示器</button>
+              <button class="ai-btn small screen-mode" data-mode="follow">跟随角色</button>
+            </div>
+          </div>
+          <div class="ai-hint" id="set-screen-hint" style="margin-top:8px;">检测中…</div>
+        </div>
+        <div class="ai-card">
           <h3>⚙ 性能设置</h3>
           <div class="ai-row">
             <label>最大帧率</label>
