@@ -25,31 +25,38 @@ node tools\build_tts_package.mjs "D:\GPT-SoVITS-v2pro-20250604" "D:\tts_pkg_out"
 - **每卷 < 2GB**（GitHub Release 单文件上限）→ **多个 zip 解压到同一目录即还原完整结构**
 - 打包工具用 Windows 自带 `tar.exe` 直接从源目录按白名单取文件（不复制中间目录、不额外占磁盘）
 
-## 2. 精简清单（保留 / 删除）
+## 2. 精简清单（保守策略 · 实测修正）
+
+> ⚠️ GPT-SoVITS 依赖链很杂（`tools.i18n` / `feature_extractor` / `datasets1`（在 `tools/AP_BWE_main` 里）/
+> `ipadic` / `pyopenjtalk` / `mecab_ko_dic` / `eunjeon` / `onnxruntime` 都会被 import），
+> **精简必须保守**，否则会出现 `No module named ...` 导致服务起不来。
 
 **保留**
 ```
-runtime\                        便携 Python + 依赖（torch 等）
-GPT_SoVITS\TTS_infer_pack\ AR\ module\ eres2net\ BigVGAN\
-GPT_SoVITS\text\                中英文本前端（日/韩已剔除）
-GPT_SoVITS\sv.py  inference_webui.py  process_ckpt.py
-GPT_SoVITS\pretrained_models\v2Pro\   <- s2Gv2ProPlus.pth / s2Dv2ProPlus.pth / s2Gv2Pro.pth
-GPT_SoVITS\pretrained_models\sv\      <- pretrained_eres2net*.ckpt（v2Pro 系列必需）
-GPT_SoVITS\pretrained_models\s1v3.ckpt  chinese-hubert-base\  chinese-roberta-wwm-ext-large\  fast_langdetect\
+runtime\                   整包保留（仅删 __pycache__ / tests / *.lib / *.pdb / *.pyc）
+tools\                     小件（i18n、*.py、asr/config.py）+ AP_BWE_main\（含 datasets1）
+GPT_SoVITS\                全部代码（TTS_infer_pack/AR/module/eres2net/BigVGAN/text/feature_extractor/f5_tts/configs…）
+GPT_SoVITS\pretrained_models\  v2Pro\（s2Gv2ProPlus.pth 等） · sv\ · s1v3.ckpt ·
+                               chinese-hubert-base\ · chinese-roberta-wwm-ext-large\ · fast_langdetect\
 api_v2.py  config.py  requirements.txt  LICENSE
+好
 ```
 
-**删除（约 -5.7GB）**
+**删除**
 ```
-tools\（UVR5 等 1.97GB）   Docker\   docs\   *.ipynb   webui.py   batch_inference.py
-pretrained_models\gsv-v4-pretrained\（788MB） s2Gv3.pth（733MB） gsv-v2final-pretrained\（338MB）
-pretrained_models\s2D488k.pth s2G488k.pth models--nvidia--bigvgan*（共约 405MB）
-训练代码（s1_train.py / s2_train.py / 数据集处理工具）
-runtime 内：日/韩分词词典（mecab_ko_dic/eunjeon/pyopenjtalk/ipadic ≈480MB）、
-           gradio / onnxruntime / ctranslate2 / pyarrow / cmake（≈670MB）、tests / __pycache__ / *.lib / *.pdb
+tools\uvr5\（718MB）  tools\asr\（1134MB，仅保留 config.py / __init__.py）
+GPT_SoVITS\pretrained_models\{gsv-v4-pretrained, s2Gv3.pth, gsv-v2final-pretrained,
+                              s2D488k.pth, s2G488k.pth, models--nvidia--bigvgan*}（约 2.3GB）
+GPT_SoVITS\prepare_datasets\   训练用数据集处理
+runtime 内 __pycache__ / tests / *.lib / *.pdb / *.pyc
 ```
 
-## 3. 发布（主人操作）
+**实测体积**：13.22 GB → **8.90 GB**（压缩后约 5.9 GB，4 卷）
+
+> ⚠️ **重要**：包内 `GPT_SoVITS/configs/tts_infer.yaml` 的 `custom:` 段默认指向 **v2final 底模**，
+> 会导致"权重是 v2ProPlus、底模是 v2final → **音色不对**"。
+> 桌宠安装器会在解压完成后**自动把 `custom:` 段改写为 v2ProPlus**（`version: v2ProPlus` +
+> `v2Pro/s2Gv2ProPlus.pth` + `s1v3.ckpt`），并按用户选择的 GPU/CPU 写入 `device`/`is_half`。## 3. 发布（主人操作）
 
 1. 在 GitHub 仓库建一个 **Release**（如 `tts-runtime-v1`）
 2. 上传 **5 个 `tts-runtime-partN.zip`**（每个 <2GB ✓）与 `package-manifest.json`

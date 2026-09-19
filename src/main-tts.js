@@ -370,6 +370,33 @@ function createTtsManager(ctx) {
     walk(root, 0);
     return found;
   }
+  // 关键：把服务推理配置切到 v2ProPlus（包内 custom 段默认为 v2final 底模 → 会导致音色不对！）
+  // 用户训练三小只用的是 v2ProPlus，必须让底模与权重匹配。
+  function ensureInferConfig(root, device) {
+    try {
+      const y = pathMod.join(root, 'GPT_SoVITS', 'configs', 'tts_infer.yaml');
+      if (!fsMod.existsSync(y)) return false;
+      let txt = fsMod.readFileSync(y, 'utf8');
+      const isCpu = device === 'cpu';
+      const custom = [
+        'custom:',
+        '  bert_base_path: GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large',
+        '  cnhuhbert_base_path: GPT_SoVITS/pretrained_models/chinese-hubert-base',
+        '  device: ' + (isCpu ? 'cpu' : 'cuda'),
+        '  is_half: ' + (isCpu ? 'false' : 'true'),
+        '  t2s_weights_path: GPT_SoVITS/pretrained_models/s1v3.ckpt',
+        '  version: v2ProPlus',
+        '  vits_weights_path: GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth',
+        ''
+      ].join('\n');
+      const next = txt.replace(/^custom:[\s\S]*?(?=^v1:)/m, custom);
+      if (next === txt) return false;         // 未匹配（结构异常）→ 不动原文件
+      fsMod.writeFileSync(y, next, 'utf8');
+      console.log('[TTS] inference config switched to v2ProPlus (device=' + (isCpu ? 'cpu' : 'cuda') + ')');
+      return true;
+    } catch (e) { return false; }
+  }
+
   // 支持多个包：GitHub Release 单文件上限 2GB → 运行时常被切成多卷；
   // 多卷依次下载、各自解压到**同一目录**即可还原完整结构。
   function parseUrls(v) {
@@ -400,6 +427,7 @@ function createTtsManager(ctx) {
         return { ok: false, error: '未找到运行时/脚本', detected: det };
       }
       save({ mode: 'managed', runtimePath: det.python, serverScript: det.script, enabled: true });
+      ensureInferConfig(root, cfg.device);      // 切到 v2ProPlus 推理配置（音色正确的前提）
       setInstall({ phase: 'done', message: '安装完成，可直接使用' });
       return { ok: true, runtimePath: det.python, serverScript: det.script };
     } catch (e) {

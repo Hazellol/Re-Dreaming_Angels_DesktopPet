@@ -21,21 +21,15 @@ const outRoot = outRootArg || path.join(path.dirname(srcRoot), 'tts_pkg_out');
 const VOL_LIMIT = 1.7 * 1024 * 1024 * 1024;   // 每卷上限（留出 GitHub 2GB 余量）
 
 // ===== 白名单（v2ProPlus 推理所需）=====
+// ⚠️ 经实测：GPT-SoVITS 的依赖链很杂（tools.i18n / feature_extractor / datasets1 / ipadic /
+// onnxruntime…都会被 import），因此**保守删除**：runtime 的 site-packages **整包保留**，
+// tools 只删明确不用的 uvr5/asr 大件，GPT_SoVITS 保留全部代码。
 const KEEP_DIRS = [
-  { rel: 'runtime', skip: [
-    /(^|\\)__pycache__(\\|$)/, /(^|\\)tests?(\\|$)/i, /(^|\\)\.cache(\\|$)/i, /(^|\\)include(\\|$)/i, /(^|\\)logs?(\\|$)/i,
-    /\.lib$/i, /\.pdb$/i, /\.pyc$/i,
-    // 与 TTS 推理无关的大件（日韩分词词典、构建/数据集/WebUI/ASR 相关）
-    /site-packages\\(mecab_ko_dic|eunjeon|pyopenjtalk|ipadic|cmake|pyarrow|gradio|ctranslate2|onnxruntime)(\\|$)/i,
-    /site-packages\\torch\\(include|test)(\\|$)/i,
-    /site-packages\\torch\\lib\\.*\.lib$/i
-  ] },
-  { rel: path.join('GPT_SoVITS', 'TTS_infer_pack') },
-  { rel: path.join('GPT_SoVITS', 'AR') },
-  { rel: path.join('GPT_SoVITS', 'module') },
-  { rel: path.join('GPT_SoVITS', 'eres2net') },
-  { rel: path.join('GPT_SoVITS', 'BigVGAN') },
-  { rel: path.join('GPT_SoVITS', 'text'), skip: [/(^|\\)(ja|ko)(\\|$)/i] },   // 只留中英前端
+  { rel: 'runtime', skip: [/(^|\\)__pycache__(\\|$)/, /(^|\\)tests?(\\|$)/i, /(^|\\)\.cache(\\|$)/i, /(^|\\)logs?(\\|$)/i, /\.lib$/i, /\.pdb$/i, /\.pyc$/i] },
+  // tools：保留小件 + AP_BWE_main（datasets1 在里面，被 audio_sr import）；只排除 uvr5 与 asr 的大文件
+  { rel: 'tools', skip: [/(^|\\)uvr5(\\|$)/i, /(^|\\)asr\\(?!config\.py$|__init__\.py$)/i, /__pycache__/, /\.pyc$/i] },
+  // GPT_SoVITS：保留全部代码（调用方白名单在下面的 pretrained_models 上）
+  { rel: 'GPT_SoVITS', skip: [/(^|\\)pretrained_models(\\|$)/i, /(^|\\)prepare_datasets(\\|$)/i, /__pycache__/, /\.pyc$/i] },
   { rel: path.join('GPT_SoVITS', 'pretrained_models', 'chinese-hubert-base') },
   { rel: path.join('GPT_SoVITS', 'pretrained_models', 'chinese-roberta-wwm-ext-large') },
   { rel: path.join('GPT_SoVITS', 'pretrained_models', 'fast_langdetect') },
@@ -43,9 +37,6 @@ const KEEP_DIRS = [
   { rel: path.join('GPT_SoVITS', 'pretrained_models', 'v2Pro') },
 ];
 const KEEP_FILES = [
-  path.join('GPT_SoVITS', 'sv.py'),
-  path.join('GPT_SoVITS', 'inference_webui.py'),
-  path.join('GPT_SoVITS', 'process_ckpt.py'),
   path.join('GPT_SoVITS', 'pretrained_models', 's1v3.ckpt'),
   'api_v2.py', 'config.py', 'requirements.txt', 'ffmpeg.exe', 'ffprobe.exe', 'LICENSE',
 ];
