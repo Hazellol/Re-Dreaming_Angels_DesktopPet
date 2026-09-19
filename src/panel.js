@@ -87,14 +87,15 @@
     if (ttsEl('tts-port')) ttsEl('tts-port').value = c.port || 9880;
     if (ttsEl('tts-runtime')) ttsEl('tts-runtime').value = c.runtimePath || '';
     if (ttsEl('tts-script')) ttsEl('tts-script').value = c.serverScript || '';
-    if (ttsEl('tts-download-url')) ttsEl('tts-download-url').value = c.downloadUrl || '';
     if (ttsEl('tts-idle')) ttsEl('tts-idle').value = c.idleUnloadSec || 300;
     if (ttsEl('tts-on-chat')) ttsEl('tts-on-chat').checked = !!(c.speakOn && c.speakOn.chat);
     if (ttsEl('tts-on-bubble')) ttsEl('tts-on-bubble').checked = !!(c.speakOn && c.speakOn.bubble);
     if (ttsEl('tts-on-chatter')) ttsEl('tts-on-chatter').checked = !!(c.speakOn && c.speakOn.chatter);
     if (ttsEl('tts-by-role')) ttsEl('tts-by-role').checked = c.saveByRole !== false && !!c.saveByRole;
-    document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mode === (c.mode || 'external')));
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.classList.toggle('pink', b.dataset.device === (c.device || 'cuda')));
+    document.querySelectorAll('#tts-mirror .tts-mirror-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mirror === (c.mirror || 'official')));
+    if (ttsEl('tts-repo')) ttsEl('tts-repo').value = c.repoUrl || '';
+    if (ttsEl('tts-mirror-custom')) ttsEl('tts-mirror-custom').value = c.mirrorCustom || '';
     // 按钮语义：external（已有服务）模式下"启动服务"无意义 → 禁用并给出提示（用户实测困惑点）
     const isManaged = (c.mode || 'external') === 'managed';
     const startBtn = ttsEl('tts-start');
@@ -127,24 +128,41 @@
   async function refreshTts() { try { renderTts(await dk.ttsStatus()); } catch (e) { /* noop */ } }
   try { dk.onTtsStatus(renderTts); } catch (e) { /* noop */ }
   refreshTts();
-  document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((x) => x.classList.toggle('pink', x === b));
-  }));
   document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((x) => x.classList.toggle('pink', x === b));
   }));
+  document.querySelectorAll('#tts-mirror .tts-mirror-btn').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#tts-mirror .tts-mirror-btn').forEach((x) => x.classList.toggle('pink', x === b));
+    previewUrls();
+  }));
+  if (ttsEl('tts-mirror-custom')) ttsEl('tts-mirror-custom').addEventListener('change', previewUrls);
+  if (ttsEl('tts-repo')) ttsEl('tts-repo').addEventListener('change', previewUrls);
+  // 显示将要下载的地址（用户一眼可见，无需手输）
+  async function previewUrls() {
+    const box = ttsEl('tts-url-preview');
+    if (!box) return;
+    try {
+      const saved = await dk.ttsConfig(ttsCollect());   // 先保存，再取拼接结果
+      const u = await dk.ttsUrls();
+      const rt = (u && u.runtime) || [];
+      box.textContent = rt.length
+        ? ('推理环境 ' + rt.length + ' 个分包：' + rt[0] + ' …　语音包：' + (((u.voices || {}).qianxia) || ''))
+        : '尚未配置仓库地址（填入 GitHub 仓库地址后会自动拼出全部分包地址）';
+      void saved;
+    } catch (e) { /* noop */ }
+  }
   function ttsCollect() {
-    const modeBtn = document.querySelector('#tts-mode .tts-mode-btn.pink');
     const devBtn = document.querySelector('#tts-device .tts-device-btn.pink');
+    const mirrorBtn = document.querySelector('#tts-mirror .tts-mirror-btn.pink');
     const patch = {
       enabled: !!(ttsEl('tts-enabled') && ttsEl('tts-enabled').checked),
-      mode: modeBtn ? modeBtn.dataset.mode : 'external',
+      mode: 'managed',                       // 只保留"桌宠启动"（一键下载环境包）
       device: devBtn ? devBtn.dataset.device : 'cuda',
-      host: (ttsEl('tts-host') && ttsEl('tts-host').value.trim()) || '127.0.0.1',
-      port: parseInt(ttsEl('tts-port') && ttsEl('tts-port').value, 10) || 9880,
+      repoUrl: (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '',
+      mirror: mirrorBtn ? mirrorBtn.dataset.mirror : 'official',
+      mirrorCustom: (ttsEl('tts-mirror-custom') && ttsEl('tts-mirror-custom').value.trim()) || '',
       runtimePath: (ttsEl('tts-runtime') && ttsEl('tts-runtime').value.trim()) || '',
       serverScript: (ttsEl('tts-script') && ttsEl('tts-script').value.trim()) || '',
-      downloadUrl: (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '',
       idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
       saveByRole: !!(ttsEl('tts-by-role') && ttsEl('tts-by-role').checked),
       speakOn: {
@@ -177,15 +195,30 @@
   try { dk.onTtsInstallProgress(renderInstall); } catch (e) { /* noop */ }
   (async () => { try { renderInstall(await dk.ttsInstallState()); } catch (e) { /* noop */ } })();
   if (ttsEl('tts-install')) ttsEl('tts-install').addEventListener('click', async () => {
-    const url = (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '';
-    if (!url) { alert('请先填入便携包下载地址（zip）'); return; }
+    const repo = (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '';
+    if (!repo) { alert('请先填写仓库地址（形如 https://github.com/<用户名>/<仓库名>）'); return; }
     try {
-      await dk.ttsConfig({ downloadUrl: url });             // 先保存地址
-      const r = await dk.ttsInstall(url);
+      await dk.ttsConfig(ttsCollect());                     // 保存仓库地址与下载源
+      const r = await dk.ttsInstallRuntime();               // 自动拼装分卷地址并依次下载
       if (r && !r.ok) alert('安装失败：' + (r.error || ''));
     } catch (e) { alert('安装异常：' + (e && e.message)); }
     refreshTts();
   });
+  // 语音包（按需下载单只）
+  document.querySelectorAll('.tts-voice-btn').forEach((b) => b.addEventListener('click', async () => {
+    const repo = (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '';
+    if (!repo) { alert('请先填写仓库地址'); return; }
+    const role = b.dataset.role;
+    b.disabled = true;
+    try {
+      await dk.ttsConfig(ttsCollect());
+      const r = await dk.ttsInstallVoice(role);
+      if (r && !r.ok) alert('语音包下载失败：' + (r.error || ''));
+      else alert('语音包已安装：' + role);
+    } catch (e) { alert('异常：' + (e && e.message)); }
+    b.disabled = false;
+    refreshTts();
+  }));
 
   // ================= 设置页：多显示器（运行屏幕） =================
   const screenBtns = Array.from(document.querySelectorAll('#set-screen-modes .screen-mode'));

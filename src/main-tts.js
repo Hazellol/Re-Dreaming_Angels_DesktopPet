@@ -35,7 +35,14 @@ const DEFAULT_CONFIG = {
   speakOn: { chat: true, bubble: false, chatter: false },   // 对哪些内容说话
   volume: 100,
   voicesDir: '',                  // 语音包目录（emotions.json + 参考音频）；留空则用默认位置
-  downloadUrl: '',                // 便携包下载地址（「桌宠启动」模式的一键下载）
+  downloadUrl: '',                // （旧）手工地址；现优先用下面的 repoUrl 自动拼装
+  // ==== 内置下载（用户不再需要手输 URL）====
+  repoUrl: '',                    // GitHub 仓库地址，如 https://github.com/<user>/<repo>
+  runtimeTag: 'tts-runtime-v1',   // 推理环境包 Release tag
+  runtimeParts: 6,                // 分卷数量
+  voiceTag: 'voices-v1',          // 语音包 Release tag
+  mirror: 'official',             // 下载源：official | ghproxy | ghfast | moeyy | llkk | custom
+  mirrorCustom: '',               // 自定义镜像前缀（custom 时使用）
   autoModelPath: true,            // 自动随请求指定语音包里的模型权重（保证音色正确）
   logRequests: true,              // 打印合成请求（诊断音色/参数问题）
   saveByRole: false               // true=合成音频按角色分目录保存（文件名含情绪与台词片段，便于整理）
@@ -397,6 +404,58 @@ function createTtsManager(ctx) {
     } catch (e) { return false; }
   }
 
+  // ---------- 下载地址构建（内置，用户无需手输）----------
+  const MIRRORS = {
+    official: '',
+    ghproxy: 'https://ghproxy.net/',
+    ghfast: 'https://ghfast.top/',
+    moeyy: 'https://github.moeyy.xyz/',
+    llkk: 'https://gh.llkk.cc/'
+  };
+  function mirrorPrefix() {
+    if (cfg.mirror === 'custom') return cfg.mirrorCustom || '';
+    return MIRRORS[cfg.mirror] || '';
+  }
+  function withMirror(u) { const p = mirrorPrefix(); return p ? (p + u) : u; }
+  function repoBase() { return String(cfg.repoUrl || '').replace(/\/+$/, ''); }
+  function buildRuntimeUrls() {
+    const base = repoBase();
+    if (!base) return [];
+    const urls = [];
+    for (let i = 1; i <= (cfg.runtimeParts || 6); i++) {
+      urls.push(withMirror(base + '/releases/download/' + cfg.runtimeTag + '/tts-runtime-part' + i + '.zip'));
+    }
+    return urls;
+  }
+  function buildVoiceUrl(role) {
+    const base = repoBase();
+    if (!base) return '';
+    return withMirror(base + '/releases/download/' + cfg.voiceTag + '/tts_voices_' + role + '.zip');
+  }
+  // 下载并解压一个语音包到 <userData>/tts/voices/<role>/
+  async function installVoice(role) {
+    const url = buildVoiceUrl(role);
+    if (!url) return { ok: false, error: '未配置仓库地址' };
+    const root = pathMod.join(userData, 'tts', 'voices');
+    const zipPath = pathMod.join(userData, 'tts', '_voice_' + role + '.zip');
+    try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
+    try {
+      setInstall({ phase: 'download', got: 0, total: 0, message: '语音包[' + role + '] 下载中…' });
+      const r = await downloadTo(url, zipPath, (got, total) => {
+        setInstall({ phase: 'download', got, total, message: '语音包[' + role + '] ' + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
+      });
+      setInstall({ phase: 'extract', got: r.bytes, total: r.bytes, message: '语音包[' + role + '] 解压中…' });
+      await expandArchive(zipPath, root);
+      try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
+      setInstall({ phase: 'done', message: '语音包[' + role + '] 安装完成' });
+      broadcast();
+      return { ok: true, role, dir: pathMod.join(root, role) };
+    } catch (e) {
+      setInstall({ phase: 'error', message: String(e && e.message).slice(0, 200) });
+      return { ok: false, error: String(e && e.message) };
+    }
+  }
+
   // 支持多个包：GitHub Release 单文件上限 2GB → 运行时常被切成多卷；
   // 多卷依次下载、各自解压到**同一目录**即可还原完整结构。
   function parseUrls(v) {
@@ -445,7 +504,10 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-stop', () => stopService('manual'));
     ipcMain.handle('tts-speak', (e, payload) => synthesize(payload || {}));
     ipcMain.handle('tts-emotions', (e, role) => loadEmotions(role));
-    ipcMain.handle('tts-install', (e, url) => installFromUrl(url || cfg.downloadUrl || ''));
+    ipcMain.handle('tts-install', (e, url) => installFromUrl(url || buildRuntimeUrls()));
+    ipcMain.handle('tts-install-runtime', () => installFromUrl(buildRuntimeUrls()));
+    ipcMain.handle('tts-install-voice', (e, role) => installVoice(String(role || '')));
+    ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
     ipcMain.handle('tts-install-state', () => installState);
     ipcMain.handle('tts-open-cache', () => {
       try { require('electron').shell.openPath(cacheDir); return { ok: true, dir: cacheDir }; } catch (e) { return { ok: false, error: e && e.message }; }

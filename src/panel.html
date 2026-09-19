@@ -343,32 +343,42 @@
             <span class="ai-hint">默认关闭。需要本地已安装 GPT-SoVITS 语音包/服务；未安装时静默降级（不影响聊天）</span>
           </div>
           <div class="ai-row">
-            <label>运行方式</label>
-            <div class="ai-btns" id="tts-mode" style="flex:1;margin:0;">
-              <button class="ai-btn small tts-mode-btn" data-mode="external">已有服务</button>
-              <button class="ai-btn small tts-mode-btn" data-mode="managed">桌宠启动</button>
-            </div>
-          </div>
-          <div class="ai-row">
             <label>推理设备</label>
             <div class="ai-btns" id="tts-device" style="flex:1;margin:0;">
               <button class="ai-btn small tts-device-btn" data-device="cuda">GPU（快）</button>
               <button class="ai-btn small tts-device-btn" data-device="cpu">CPU（省显存）</button>
             </div>
           </div>
-          <div class="ai-row"><label>服务地址</label><input type="text" id="tts-host" style="width:110px;"><input type="text" id="tts-port" style="width:70px;margin-left:6px;"></div>
-          <div class="ai-row"><label>运行时</label><input type="text" id="tts-runtime" placeholder="便携包里的 python.exe（桌宠启动模式）" style="flex:1;"></div>
-          <div class="ai-row"><label>服务脚本</label><input type="text" id="tts-script" placeholder="服务脚本路径（桌宠启动模式）" style="flex:1;"></div>
-          <div class="ai-row" style="align-items:flex-start;"><label>一键下载</label>
-            <textarea id="tts-download-url" placeholder="便携包下载地址（分卷时每行一个 zip，会依次下载并解压到同一目录）" style="flex:1;height:52px;font:11px monospace;"></textarea>
+          <div class="ai-row"><label>运行时</label><input type="text" id="tts-runtime" placeholder="安装后自动填入（便携包里的 python.exe）" style="flex:1;"></div>
+          <div class="ai-row"><label>服务脚本</label><input type="text" id="tts-script" placeholder="安装后自动填入（api_v2.py）" style="flex:1;"></div>
+          <div class="ai-row"><label>仓库地址</label><input type="text" id="tts-repo" placeholder="https://github.com/&lt;用户名&gt;/&lt;仓库名&gt;（填一次即可，自动拼出各分包地址）" style="flex:1;"></div>
+          <div class="ai-row" style="align-items:flex-start;"><label>下载源</label>
+            <div style="flex:1;">
+              <div class="ai-btns" id="tts-mirror" style="margin:0;">
+                <button class="ai-btn small tts-mirror-btn" data-mirror="official">GitHub 官方</button>
+                <button class="ai-btn small tts-mirror-btn" data-mirror="ghproxy">ghproxy</button>
+                <button class="ai-btn small tts-mirror-btn" data-mirror="ghfast">ghfast</button>
+                <button class="ai-btn small tts-mirror-btn" data-mirror="moeyy">moeyy</button>
+                <button class="ai-btn small tts-mirror-btn" data-mirror="llkk">llkk</button>
+                <button class="ai-btn small tts-mirror-btn" data-mirror="custom">自定义</button>
+              </div>
+              <input type="text" id="tts-mirror-custom" placeholder="自定义加速前缀（如 https://ghproxy.net/）" style="width:100%;margin-top:6px;">
+            </div>
           </div>
           <div class="ai-btns" style="margin-top:6px;">
-            <button class="ai-btn pink small" id="tts-install">⬇ 一键下载并自动集成</button>
-            <span class="ai-hint" id="tts-install-msg">下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用</span>
+            <button class="ai-btn pink small" id="tts-install">⬇ 一键下载推理环境</button>
+            <span class="ai-hint" id="tts-install-msg">下载→解压→自动探测 Python 与服务脚本→写入配置（自动切 v2ProPlus 音色配置）</span>
           </div>
           <div style="height:6px;background:#efe3ea;border-radius:4px;overflow:hidden;margin-top:6px;">
             <div id="tts-install-bar" style="height:100%;width:0%;background:#e0559a;transition:width .2s;"></div>
           </div>
+          <div class="ai-btns" style="margin-top:6px;">
+            <span class="ai-hint" style="margin-right:6px;">语音包（按需下载）：</span>
+            <button class="ai-btn small tts-voice-btn" data-role="airui">爱芮</button>
+            <button class="ai-btn small tts-voice-btn" data-role="qianxia">千夏</button>
+            <button class="ai-btn small tts-voice-btn" data-role="nangong">南宫羽</button>
+          </div>
+          <div class="ai-hint" id="tts-url-preview" style="margin-top:6px;word-break:break-all;"></div>
           <div class="ai-row"><label>空闲卸载</label><input type="text" id="tts-idle" style="width:70px;"><span class="ai-hint">秒（无请求后释放显存/内存）</span></div>
           <div class="ai-row check"><label>聊天回复朗读</label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复自动转语音</span></div>
           <div class="ai-row check"><label>待机台词朗读</label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词（较频繁）</span></div>
