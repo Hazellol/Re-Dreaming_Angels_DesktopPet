@@ -115,7 +115,7 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
     **终极修复：交互时临时置顶**（`setInterimTop`）——主进程判定鼠标进入可交互区域（或 `hitForceInteractive` 拖动/编辑）时：`win.setAlwaysOnTop(true,'floating')` + `moveTop()`，并维护 2.6s 计时器；鼠标离开或无交互到期后，若用户置顶开关为关则 `setAlwaysOnTop(false)` 恢复（尊重用户设置）。`set-topmost` IPC 同步维护 `userTopmost` 真源（用户开关）与 `interimTop`（临时态）两个状态。
     **实测铁证**（未置顶 + 全屏浏览器覆盖 + 站定角色）：鼠标移到她身上 → 日志 `[POLL] resync INTERACTIVE cursor=(367,690) hit=(295,586,145x209) interimTop` → **她浮到浏览器之上** → 点击 → **互动气泡「助教，我今天的……状态特别好，能加练吗！」** ✓✓✓（此前的鼠标捕获 SetCapture 模拟同样恢复正常）。
     **教训**：①主进程轮询只解决"穿透状态正确性"；②"未置顶窗口能否被点击"是 z-order 问题，唯一解是**交互期间临时置顶**；③`moveTop()` ≠ 置顶，对后台窗口不可靠。
-18. **【第三轮·真凶】`drag.on` 卡死 → 所有点击失效（QQ 截图/系统截图后"卡死"的真正机制）**：用户复现路径 `Ctrl+Alt+A → 左键单击 → 回车`（QQ 截图），现象=**能弹右键菜单但点不动任何东西**。人家用等效工具（系统截图 Win+Shift+S / 自制 `SetCapture` 覆盖窗口）复现并**靠持久化状态日志抓到铁证**：
+18. **【第三轮·真凶】`drag.on` 卡死 → 所有点击失效（QQ 截图/系统截图后"卡死"的真正机制）**：用户复现路径 `Ctrl+Alt+A → 左键单击 → 回车`（QQ 截图），现象=**能弹右键菜单但点不动任何东西**。本项目用等效工具（系统截图 Win+Shift+S / 自制 `SetCapture` 覆盖窗口）复现并**靠持久化状态日志抓到铁证**：
     - 截图工具捕获鼠标期间，用户那次"左键单击"的 **mousedown 到达了我们的窗口，但 mouseup 被截图工具吃掉** → `drag.on` **永久停在 true**（日志特征：主进程轮询里 `cursor=(-1,-1)`——因为 renderer 持续上报 `forceInteractive=true` 而跳过读光标）；
     - 后果：此后每次点击都被当作"拖动开始"，而 `mouseup` 又收不到 → **互动永远不触发**（而 `contextmenu` 是独立事件，所以右键菜单照样弹出——与用户描述 100% 吻合）；同时主进程永久 INTERACTIVE + 永久临时置顶（她浮在最上面，看似正常实则点不动）。
     **修复（三条自救路径 + 一道主进程兜底）**：
@@ -326,7 +326,7 @@ main    = ai-chat handler：webSearch ? Responses(+web_search+4096) : ChatComple
 | 日期 | 现象 | 根因 | 修法 | 验证 |
 |---|---|---|---|---|
 | 2026-09 | **功能新增批**：开机自启 / 保持置顶开关 / 播放器导入歌曲 | —（新需求） | ①控制台「开机自启动」开关（`app.setLoginItemSettings`，开发模式附项目路径参数，切换即生效；**入口在控制台主页**，与"显示/隐藏小偶像"并排）；②右键菜单「📌 保持置顶」开/关（`win.setAlwaysOnTop(v,'floating')`，记忆 `QX_TOPMOST`，启动时应用）；③播放器「➕ 添加歌曲」：`dialog.showOpenDialog` 多选 → 复制到 `%APPDATA%\ReDreamingAngels\bgm`（打包版 assets 只读的统一用户目录）→ `rescanBgm()` 重扫（`listAudio` 合并内置+用户目录并去重；`readAudio` 双目录兜底；aac 支持） | 菜单置顶项/主页开关截图 ✓；语法/运行零错误 ✓；导入对话框待手动点 ➕ 验证 |
-| 2026-09 | **未置顶时被最大化窗口完全覆盖 → 无法互动**（菜单能出现但点不到任何选项；被最小化窗口遮挡则正常）——用户实测 | 双重原因叠加：①窗口 z-order 在覆盖者之下；②为"不抢焦点"设置的 `setFocusable(false)` 使点击**不会像普通窗口那样激活/浮到前面** → 窗口永久沉底；虽然穿透切换会收到 mousemove 并渲染菜单，但点击事件仍被上层窗口吃掉 | 三处提层：①`set-mouse-ignore(false)`（要交互）时顺带 `win.moveTop()`；②新增 `move-top` IPC；③renderer `bringToFront()`（菜单/面板/对话框打开）同步 `moveTop()+setMouseIgnore(false)`——**不改变用户的置顶开关语义**，仅在需要交互时把窗口提到同层最顶 | 逻辑修复；需真实"最大化窗口覆盖"场景复测（主人验证） |
+| 2026-09 | **未置顶时被最大化窗口完全覆盖 → 无法互动**（菜单能出现但点不到任何选项；被最小化窗口遮挡则正常）——用户实测 | 双重原因叠加：①窗口 z-order 在覆盖者之下；②为"不抢焦点"设置的 `setFocusable(false)` 使点击**不会像普通窗口那样激活/浮到前面** → 窗口永久沉底；虽然穿透切换会收到 mousemove 并渲染菜单，但点击事件仍被上层窗口吃掉 | 三处提层：①`set-mouse-ignore(false)`（要交互）时顺带 `win.moveTop()`；②新增 `move-top` IPC；③renderer `bringToFront()`（菜单/面板/对话框打开）同步 `moveTop()+setMouseIgnore(false)`——**不改变用户的置顶开关语义**，仅在需要交互时把窗口提到同层最顶 | 逻辑修复；需真实"最大化窗口覆盖"场景复测（用户验证） |
 
 ---
 

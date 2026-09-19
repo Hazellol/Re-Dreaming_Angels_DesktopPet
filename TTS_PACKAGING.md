@@ -56,7 +56,7 @@ runtime 内 __pycache__ / tests / *.lib / *.pdb / *.pyc
 > ⚠️ **重要**：包内 `GPT_SoVITS/configs/tts_infer.yaml` 的 `custom:` 段默认指向 **v2final 底模**，
 > 会导致"权重是 v2ProPlus、底模是 v2final → **音色不对**"。
 > 桌宠安装器会在解压完成后**自动把 `custom:` 段改写为 v2ProPlus**（`version: v2ProPlus` +
-> `v2Pro/s2Gv2ProPlus.pth` + `s1v3.ckpt`），并按用户选择的 GPU/CPU 写入 `device`/`is_half`。## 3. 发布（主人操作）
+> `v2Pro/s2Gv2ProPlus.pth` + `s1v3.ckpt`），并按用户选择的 GPU/CPU 写入 `device`/`is_half`。## 3. 发布（用户操作）
 
 1. 在 GitHub 仓库建一个 **Release**（如 `tts-runtime-v1`）
 2. 上传 **5 个 `tts-runtime-partN.zip`**（每个 <2GB ✓）与 `package-manifest.json`
