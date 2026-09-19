@@ -773,7 +773,9 @@ function createPanelWindow() {
     x: display.bounds.x + Math.round((display.bounds.width - pw) / 2),
     y: display.bounds.y + Math.round((display.bounds.height - ph) / 2) - 40,
     frame: false,
-    resizable: false,
+    resizable: true,            // 可自由缩放
+    minWidth: 640, minHeight: 520,
+    maximizable: true,
     movable: true,
     skipTaskbar: false,          // 任务栏可见（用户要求）
     alwaysOnTop: false,
@@ -811,12 +813,13 @@ app.whenReady().then(() => {
       try {
         const u = new URL(req.url);
         const rel = decodeURIComponent((u.hostname || '') + (u.pathname || '')).replace(/^\/+/, '');
-        // TTS 合成音频（userData/tts_cache/[角色/]xxx.wav）→ <audio src="pet://tts/…">
+        // TTS 合成音频（缓存目录由 tts 管理器决定：项目内 <项目>/tts/cache）→ <audio src="pet://tts/…">
         if (rel.startsWith('tts/')) {
           const sub = rel.slice(4);
           // 防目录穿越：只允许"角色名/文件名"或"文件名"两种形态
           const safe = sub.split('/').filter((s) => s && s !== '.' && s !== '..').join(path.sep);
-          const f2 = path.join(app.getPath('userData'), 'tts_cache', safe);
+          const baseDir = (tts && tts.cacheDir) ? tts.cacheDir() : path.join(app.getPath('userData'), 'tts_cache');
+          const f2 = path.join(baseDir, safe);
           try { if (fs.existsSync(f2) && fs.statSync(f2).isFile()) return net.fetch(pathToFileURL(f2).toString()); } catch (e) { /* noop */ }
           return new Response('', { status: 404 });
         }
@@ -836,7 +839,7 @@ app.whenReady().then(() => {
   try {
     tts = createTtsManager({ app, ipcMain, getWin: () => win });
     tts.register();
-    setInterval(() => { try { tts.probe(); } catch (e) { /* noop */ } }, 30000);   // 周期探活（状态准确）
+    setInterval(() => { try { tts.probe(); } catch (e) { /* noop */ } }, 5000);   // 5s 探活：服务状态实时反映到控制台（无需用户手点"探测"）
     console.log('[TTS] manager ready (enabled =', tts.config().enabled + ')');
     // 调试：QX_TTS_TEST='qianxia|你好呀|happy' → 启动 8s 后自动合成一句（验证链路，无需 UI 操作）
     if (process.env.QX_TTS_TEST) {

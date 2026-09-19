@@ -19,8 +19,22 @@
   const btnSettings = document.getElementById('btn-settings');
   const tTitle = document.getElementById('t-title');
   const tSub = document.getElementById('t-sub');
+  let currentView = 'home';
+  // ===== 未保存提示：设置页里有改动但没点"保存并应用"时，离开/关闭会询问 =====
+  let settingsDirty = false;
+  function markSettingsDirty() { settingsDirty = true; }
+  function confirmSaveIfDirty() {
+    if (!settingsDirty) return true;
+    const yes = confirm('设置尚未保存，是否保存？\n\n「确定」= 立即保存并应用\n「取消」= 放弃本次修改');
+    if (yes) { try { saveAllSettings(); } catch (e) { /* noop */ } }
+    settingsDirty = false;
+    return true;
+  }
   // view: 'home' | 'ai' | 'settings'
   function showView(view) {
+    // 离开"设置"页时，若本次有未保存的修改 → 询问是否保存
+    if (currentView === 'settings' && view !== 'settings') confirmSaveIfDirty();
+    currentView = view;
     viewHome.style.display = view === 'home' ? 'block' : 'none';
     viewAi.style.display = view === 'ai' ? 'block' : 'none';
     if (viewSettings) viewSettings.style.display = view === 'settings' ? 'block' : 'none';
@@ -96,16 +110,26 @@
     document.querySelectorAll('#tts-mirror .tts-mirror-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mirror === (c.mirror || 'official')));
     if (ttsEl('tts-repo')) ttsEl('tts-repo').value = c.repoUrl || '';
     if (ttsEl('tts-mirror-custom')) ttsEl('tts-mirror-custom').value = c.mirrorCustom || '';
-    // 按钮语义：external（已有服务）模式下"启动服务"无意义 → 禁用并给出提示（用户实测困惑点）
-    const isManaged = (c.mode || 'external') === 'managed';
+    // 按钮状态联动：运行中/启动中 → 只能"停止"；未运行 → 只能"启动"
     const startBtn = ttsEl('tts-start');
-    if (startBtn) {
-      startBtn.disabled = !isManaged;
-      startBtn.style.opacity = isManaged ? '' : '.45';
-      startBtn.title = isManaged ? '启动桌宠自带的 TTS 服务（便携包）' : '当前是「已有服务」模式：请在外部启动 GPT-SoVITS，或切到「桌宠启动」';
-    }
     const stopBtn = ttsEl('tts-stop');
-    if (stopBtn) stopBtn.title = isManaged ? '停止桌宠启动的服务' : '当前是「已有服务」模式：服务由外部管理';
+    const busy = (s.serviceState === 'running' || s.serviceState === 'starting');
+    if (startBtn) { startBtn.disabled = busy; startBtn.style.opacity = busy ? '.45' : ''; startBtn.title = busy ? '服务已在运行' : '启动桌宠自带的 TTS 服务（首次加载模型约 1~3 分钟）'; }
+    if (stopBtn) { stopBtn.disabled = !busy; stopBtn.style.opacity = busy ? '' : '.45'; stopBtn.title = busy ? '停止服务（释放显存/内存）' : '服务未运行'; }
+    // 状态行文案（含"启动中"）
+    const line = ttsEl('tts-status-line');
+    if (line) {
+      const parts = [];
+      parts.push(s.serviceState === 'running' ? '🟢 服务运行中'
+        : s.serviceState === 'starting' ? '🟡 服务启动中（正在加载模型，约 1~3 分钟）'
+        : s.serviceState === 'disabled' ? '⚪ 语音已关闭（勾选"启用语音"并保存）'
+        : '⚪ 服务未运行（点「启动服务」即可）');
+      parts.push(c.enabled ? '语音已启用' : '语音未启用');
+      parts.push('设备 ' + (c.device || 'cuda'));
+      parts.push('语音包 ' + (s.hasVoices ? '已就绪' : '缺失（请在下方下载语音包）'));
+      if (s.lastError) parts.push('⚠ ' + s.lastError);
+      line.textContent = '状态：' + parts.join(' · ') + '　（数据目录：' + (s.dataRoot || s.voicesRoot || '') + '）';
+    }
     if (ttsEl('tts-adv')) {
       try {
         ttsEl('tts-adv').value = JSON.stringify({
@@ -113,16 +137,6 @@
           refFields: c.refFields, refMode: c.refMode, healthPath: c.healthPath
         }, null, 1);
       } catch (e) { /* noop */ }
-    }
-    const line = ttsEl('tts-status-line');
-    if (line) {
-      const parts = [];
-      parts.push(s.running ? '🟢 服务运行中' : '⚪ 服务未运行');
-      parts.push(c.enabled ? '语音已启用' : '语音已关闭');
-      parts.push('设备 ' + (c.device || 'cuda'));
-      parts.push('语音包 ' + (s.hasVoices ? '已就绪' : '缺失（需下载/放置 emotions.json + 参考音频）'));
-      if (s.lastError) parts.push('⚠ ' + s.lastError);
-      line.textContent = '状态：' + parts.join(' · ') + '　（目录：' + (s.voicesRoot || '') + '）';
     }
   }
   async function refreshTts() { try { renderTts(await dk.ttsStatus()); } catch (e) { /* noop */ } }
@@ -177,11 +191,47 @@
     } catch (e) { /* JSON 非法则忽略高级项 */ }
     return patch;
   }
-  if (ttsEl('tts-save')) ttsEl('tts-save').addEventListener('click', async () => { try { renderTts(await dk.ttsConfig(ttsCollect())); } catch (e) { /* noop */ } });
+  // 统一的"保存并应用"（设置页所有可保存项），供按钮与"未保存提示"共用
+  async function ttsSave() {
+    try { renderTts(await dk.ttsConfig(ttsCollect())); settingsDirty = false; } catch (e) { /* noop */ }
+  }
+  function saveAllSettings() { ttsSave(); }
+  if (ttsEl('tts-save')) ttsEl('tts-save').addEventListener('click', ttsSave);
+  // 设置页改动跟踪：任意控件变化即视为"未保存"
+  (function bindSettingsDirty() {
+    document.querySelectorAll('#view-settings input, #view-settings textarea, #view-settings select').forEach((el) => {
+      el.addEventListener('change', markSettingsDirty);
+    });
+    document.querySelectorAll('#view-settings .ai-btn').forEach((b) => {
+      const ignore = ['tts-save', 'tts-open-cache', 'tts-probe', 'tts-start', 'tts-stop', 'tts-install', 'tts-check-update'];
+      if (ignore.includes(b.id) || b.classList.contains('tts-voice-btn')) return;
+      b.addEventListener('click', markSettingsDirty);
+    });
+  })();
   if (ttsEl('tts-probe')) ttsEl('tts-probe').addEventListener('click', async () => { try { await dk.ttsProbe(); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-start')) ttsEl('tts-start').addEventListener('click', async () => { try { const r = await dk.ttsStart(); if (r && !r.ok) alert('启动失败：' + (r.error || '')); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-stop')) ttsEl('tts-stop').addEventListener('click', async () => { try { await dk.ttsStop(); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-open-cache')) ttsEl('tts-open-cache').addEventListener('click', async () => { try { await dk.ttsOpenCache(); } catch (e) { /* noop */ } });
+  // ===== 版本与更新（查项目仓库最新 Release / 最近提交）=====
+  if (ttsEl('tts-check-update')) ttsEl('tts-check-update').addEventListener('click', async () => {
+    const res = ttsEl('update-result'), log = ttsEl('update-log');
+    if (res) res.textContent = '正在查询 GitHub…';
+    if (log) { log.style.display = 'none'; log.textContent = ''; }
+    let r = null;
+    try { r = await dk.ttsCheckUpdate(); } catch (e) { r = { ok: false, error: e && e.message }; }
+    if (!r || !r.ok) { if (res) res.textContent = '❌ 检测失败：' + ((r && r.error) || '未知错误') + '（可稍后重试）'; return; }
+    const latest = (r.releases && r.releases[0]) || null;
+    if (res) {
+      res.textContent = latest
+        ? ('📦 最新版本 ' + (latest.tag || latest.name || '') + '（' + String(latest.publishedAt || '').slice(0, 10) + '）　本地 v' + (r.local || '') + '　共 ' + r.releases.length + ' 个发布')
+        : ('仓库暂无 Release　本地 v' + (r.local || ''));
+    }
+    const lines = [];
+    if (latest && latest.body) lines.push('【' + (latest.tag || latest.name) + ' 更新日志】\n' + latest.body);
+    if (r.commits && r.commits.length) lines.push('【最近提交】\n' + r.commits.map((c) => '  ' + c.sha + '  ' + c.message + '  ' + String(c.date || '').slice(0, 10)).join('\n'));
+    if (log && lines.length) { log.style.display = 'block'; log.textContent = lines.join('\n\n'); }
+  });
+  if (ttsEl('btn-open-repo')) ttsEl('btn-open-repo').addEventListener('click', () => { try { dk.openExternal('https://github.com/Hazellol/Re-Dreaming_Angels_DesktopPet/releases'); } catch (e) { /* noop */ } });
   // 一键下载并自动集成（下载→解压→探测→写配置）
   function renderInstall(s) {
     if (!s) return;
@@ -328,8 +378,8 @@
   try { dk.onIdolsShown((on) => renderIdolsShown(on)); } catch (e) { /* noop */ }
   document.getElementById('btn-min').addEventListener('click', () => dk.minimizePanel());
   const btnClose = document.getElementById('btn-close');
-  if (btnClose) btnClose.addEventListener('click', () => dk.closePanel());   // 关闭控制台（窗口销毁，释放该渲染进程）
-  document.getElementById('btn-quit').addEventListener('click', () => dk.quit());
+  if (btnClose) btnClose.addEventListener('click', () => { confirmSaveIfDirty(); dk.closePanel(); });   // 关闭控制台（有未保存改动会先询问）
+  document.getElementById('btn-quit').addEventListener('click', () => { confirmSaveIfDirty(); dk.quit(); });
 
   // ================= 对话配置（DeepSeek；存 data/ai_config.json，与主窗共享） =================
   const DEFAULTS = { provider: 'deepseek', apiKey: '', model: 'deepseek-v4-flash', temperature: 1.0, maxTokens: 256, contextRounds: 20, historyOn: true, chatMode: 'panel', webSearch: false };

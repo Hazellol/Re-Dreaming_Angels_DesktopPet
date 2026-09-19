@@ -37,7 +37,7 @@ const DEFAULT_CONFIG = {
   voicesDir: '',                  // 语音包目录（emotions.json + 参考音频）；留空则用默认位置
   downloadUrl: '',                // （旧）手工地址；现优先用下面的 repoUrl 自动拼装
   // ==== 内置下载（用户不再需要手输 URL）====
-  repoUrl: '',                    // GitHub 仓库地址，如 https://github.com/<user>/<repo>
+  repoUrl: 'https://github.com/Hazellol/Re-Dreaming_Angels_DesktopPet',   // 内置仓库地址（用户无需填写）
   runtimeTag: 'tts-runtime-v1',   // 推理环境包 Release tag
   runtimeParts: 6,                // 分卷数量
   voiceTag: 'voices-v1',          // 语音包 Release tag
@@ -54,9 +54,30 @@ function createTtsManager(ctx) {
   const fsMod = f || fs;
 
   const userData = app.getPath('userData');
-  const cfgPath = pathMod.join(userData, 'tts_config.json');
-  const cacheDir = pathMod.join(userData, 'tts_cache');
-  let cfg = Object.assign({}, DEFAULT_CONFIG);
+  // ===== 数据根目录：**优先项目内**（用户要求"所有功能数据都在项目文件夹里"）=====
+  // 项目目录可写 → 用 <项目>/tts；打包版/只读环境（Program Files、asar）→ 回退 userData/tts
+  let dataRootCache = null;
+  function dataRoot() {
+    if (dataRootCache) return dataRootCache;
+    const cands = [pathMod.join(__dirname, '..', 'tts'), pathMod.join(process.cwd(), 'tts')];
+    for (const c of cands) {
+      try {
+        fsMod.mkdirSync(c, { recursive: true });
+        const probe = pathMod.join(c, '.writetest');
+        fsMod.writeFileSync(probe, 'x');
+        fsMod.unlinkSync(probe);
+        dataRootCache = c;
+        return c;
+      } catch (e) { /* 试下一个 */ }
+    }
+    dataRootCache = pathMod.join(userData, 'tts');
+    return dataRootCache;
+  }
+  const legacyTtsDir = pathMod.join(userData, 'tts');   // 旧位置（兼容读取/迁移来源）
+  function cfgFile() { return pathMod.join(dataRoot(), 'tts_config.json'); }
+  function cacheDirPath() { return pathMod.join(dataRoot(), 'cache'); }
+  let cfgPath = pathMod.join(userData, 'tts_config.json');
+  let cacheDir = pathMod.join(userData, 'tts_cache');
   let proc = null;               // managed 模式的服务子进程
   let idleTimer = null;
   let lastStatus = { running: false, checkedAt: 0, lastError: '', lastSynthAt: 0 };
@@ -64,8 +85,21 @@ function createTtsManager(ctx) {
   try { fsMod.mkdirSync(cacheDir, { recursive: true }); } catch (e) { /* noop */ }
 
   function load() {
+    // 换到项目内后，配置也搬过去；首次自动从旧位置迁移（保留用户已有设置）
+    cfgPath = cfgFile();
+    cacheDir = cacheDirPath();
+    try { fsMod.mkdirSync(cacheDir, { recursive: true }); } catch (e) { /* noop */ }
+    if (!fsMod.existsSync(cfgPath)) {
+      const legacyCfg = pathMod.join(legacyTtsDir, 'tts_config.json');
+      try { if (fsMod.existsSync(legacyCfg)) fsMod.copyFileSync(legacyCfg, cfgPath); } catch (e) { /* noop */ }
+      if (!fsMod.existsSync(cfgPath)) {
+        const legacyCfg2 = pathMod.join(userData, 'tts_config.json');
+        try { if (fsMod.existsSync(legacyCfg2)) fsMod.copyFileSync(legacyCfg2, cfgPath); } catch (e) { /* noop */ }
+      }
+    }
     try {
-      const raw = fsMod.readFileSync(cfgPath, 'utf8');
+      // 去掉可能的 UTF-8 BOM（用户/脚本手改配置时容易带上，会导致 JSON.parse 失败）
+      const raw = fsMod.readFileSync(cfgPath, 'utf8').replace(/^\uFEFF/, '');
       cfg = Object.assign({}, DEFAULT_CONFIG, JSON.parse(raw));
       cfg.params = Object.assign({}, DEFAULT_CONFIG.params, cfg.params || {});
       cfg.speakOn = Object.assign({}, DEFAULT_CONFIG.speakOn, cfg.speakOn || {});
@@ -94,9 +128,10 @@ function createTtsManager(ctx) {
   // ---------- 语音包（情绪映射）----------
   function voicesRoot() {
     if (cfg.voicesDir) return cfg.voicesDir;
-    // 依次尝试：用户数据目录 → 项目 tts_out
+    // 依次尝试：<数据根>/voices（项目内）→ 旧 userData/tts/voices → 项目 tts_out（兼容手工构建）
     const cands = [
-      pathMod.join(userData, 'tts', 'voices'),
+      pathMod.join(dataRoot(), 'voices'),
+      pathMod.join(legacyTtsDir, 'voices'),
       pathMod.join(__dirname, '..', 'tts_out')
     ];
     for (const c of cands) { try { if (fsMod.existsSync(c)) return c; } catch (e) { /* noop */ } }
@@ -151,12 +186,20 @@ function createTtsManager(ctx) {
     if (cfg.mode !== 'managed') return { ok: false, error: '当前为 external 模式（请在外部先启动 GPT-SoVITS 服务）' };
     if (proc && !proc.killed) return { ok: true, already: true };
     if (!cfg.runtimePath || !cfg.serverScript) return { ok: false, error: '未配置运行时与脚本路径（便携包）' };
+    if (!fsMod.existsSync(cfg.runtimePath)) return { ok: false, error: '运行时不存在：' + cfg.runtimePath };
+    if (!fsMod.existsSync(cfg.serverScript)) return { ok: false, error: '服务脚本不存在：' + cfg.serverScript };
     try {
-      const args = [cfg.serverScript].concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs : []);
-      proc = spawn(cfg.runtimePath, args, { cwd: pathMod.dirname(cfg.serverScript), windowsHide: true, stdio: 'ignore' });
-      proc.on('exit', (code) => { console.log('[TTS] service exited', code); proc = null; });
-      console.log('[TTS] service started, device =', cfg.device);
-      return { ok: true };
+      const args = [pathMod.basename(cfg.serverScript)].concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs : []);
+      // 服务日志写到 <数据根>/logs/server.log（排错用）
+      const logDir = pathMod.join(dataRoot(), 'logs');
+      try { fsMod.mkdirSync(logDir, { recursive: true }); } catch (e) { /* noop */ }
+      const logFile = pathMod.join(logDir, 'server.log');
+      const out = fsMod.openSync(logFile, 'a');
+      proc = spawn(cfg.runtimePath, args, { cwd: pathMod.dirname(cfg.serverScript), windowsHide: true, stdio: ['ignore', out, out] });
+      proc.on('exit', (code) => { console.log('[TTS] service exited', code); proc = null; lastStatus.running = false; broadcast(); });
+      console.log('[TTS] service started, device =', cfg.device, 'log =', logFile);
+      broadcast();
+      return { ok: true, log: logFile };
     } catch (e) { return { ok: false, error: e && e.message }; }
   }
   function stopService(reason) {
@@ -249,9 +292,15 @@ function createTtsManager(ctx) {
             : ('服务启动失败：' + (s.error || ''));
           return { ok: false, error: tip };
         }
-        for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 500)); if (await probe()) break; }
+        // 首次启动要加载模型（实测 v2ProPlus 约 90~120 秒）→ 等待上限默认 180 秒，期间状态为"启动中"
+        const waitMs = Math.max(30000, (cfg.firstStartWaitSec || 180) * 1000);
+        const t0 = Date.now();
+        while (Date.now() - t0 < waitMs) {
+          await new Promise((r) => setTimeout(r, 1000));
+          if (await probe()) break;
+        }
       }
-      if (!lastStatus.running) return { ok: false, error: lastStatus.lastError ? ('服务不可用：' + lastStatus.lastError) : '服务不可用（未启动或端口不对）' };
+      if (!lastStatus.running) return { ok: false, error: lastStatus.lastError ? ('服务不可用：' + lastStatus.lastError) : '服务不可用（启动超时或端口被占用）' };
     }
 
     // 组装请求（模板化，适配不同版本）
@@ -304,16 +353,21 @@ function createTtsManager(ctx) {
     } catch (e) { /* noop */ }
   }
   function status() {
+    // 服务状态机：disabled（总开关关）/ running / starting（已拉起进程但还没监听）/ stopped
+    const state = !cfg.enabled ? 'disabled' : (lastStatus.running ? 'running' : (proc ? 'starting' : 'stopped'));
     return {
       running: !!lastStatus.running,
+      serviceState: state,
       managed: cfg.mode === 'managed',
       enabled: !!cfg.enabled,
       device: cfg.device,
       host: cfg.host,
       port: cfg.port,
+      dataRoot: dataRoot(),
       voicesRoot: voicesRoot(),
       hasVoices: ['airui', 'qianxia', 'nangong'].some((r) => !!loadEmotions(r)),
-      lastError: lastStatus.lastError || '',
+      // 仅在"确实探测失败且未在启动中"时提示错误，避免未运行时一直显示陈旧的连接错误
+      lastError: (state === 'stopped' && lastStatus.checkedAt && lastStatus.lastError) ? lastStatus.lastError : '',
       config: cfg
     };
   }
@@ -436,8 +490,8 @@ function createTtsManager(ctx) {
   async function installVoice(role) {
     const url = buildVoiceUrl(role);
     if (!url) return { ok: false, error: '未配置仓库地址' };
-    const root = pathMod.join(userData, 'tts', 'voices');
-    const zipPath = pathMod.join(userData, 'tts', '_voice_' + role + '.zip');
+    const root = pathMod.join(dataRoot(), 'voices');       // 项目内 voices 目录
+    const zipPath = pathMod.join(dataRoot(), '_voice_' + role + '.zip');
     try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
     try {
       setInstall({ phase: 'download', got: 0, total: 0, message: '语音包[' + role + '] 下载中…' });
@@ -465,8 +519,8 @@ function createTtsManager(ctx) {
   async function installFromUrl(urlOrUrls) {
     const urls = parseUrls(urlOrUrls);
     if (!urls.length) return { ok: false, error: '未提供下载地址' };
-    const root = pathMod.join(userData, 'tts');
-    const zipPath = pathMod.join(root, '_download.zip');
+    const root = dataRoot();
+    const zipPath = pathMod.join(dataRoot(), '_download.zip');
     try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
     try {
       for (let i = 0; i < urls.length; i++) {
@@ -495,6 +549,47 @@ function createTtsManager(ctx) {
     }
   }
 
+  // ---------- 检测更新（查项目仓库最新 Release 与最近提交）----------
+  function httpsGetJson(host, pathName, timeoutMs) {
+    return new Promise((resolve) => {
+      const https = require('https');
+      const req = https.request({
+        host, path: pathName, method: 'GET', timeout: timeoutMs || 9000,
+        headers: { 'User-Agent': 'ReDreamingAngels-DesktopPet', 'Accept': 'application/vnd.github+json' }
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (d) => chunks.push(d));
+        res.on('end', () => {
+          const txt = Buffer.concat(chunks).toString('utf8');
+          try {
+            resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: JSON.parse(txt) });
+          } catch (e) { resolve({ ok: false, status: res.statusCode, error: 'JSON 解析失败 (HTTP ' + res.statusCode + ')' }); }
+        });
+      });
+      req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: '连接超时' }); });
+      req.on('error', (e) => resolve({ ok: false, error: e && e.message }));
+      req.end();
+    });
+  }
+  async function checkUpdate() {
+    const m = /github\.com\/([^/]+)\/([^/]+)/i.exec(repoBase() || '');
+    if (!m) return { ok: false, error: '请先配置 GitHub 仓库地址' };
+    const owner = m[1], repo = m[2].replace(/\.git$/i, '');
+    const [rel, com] = await Promise.all([
+      httpsGetJson('api.github.com', '/repos/' + owner + '/' + repo + '/releases?per_page=3'),
+      httpsGetJson('api.github.com', '/repos/' + owner + '/' + repo + '/commits?per_page=5')
+    ]);
+    if (!rel.ok && !com.ok) return { ok: false, error: rel.error || com.error || '查询失败' };
+    const releases = (Array.isArray(rel.json) ? rel.json : []).map((r) => ({
+      tag: r.tag_name, name: r.name, body: (r.body || '').slice(0, 2000), publishedAt: r.published_at, url: r.html_url
+    }));
+    const commits = (Array.isArray(com.json) ? com.json : []).map((c) => ({
+      sha: (c.sha || '').slice(0, 7), message: (c.commit && c.commit.message || '').split('\n')[0].slice(0, 120),
+      date: c.commit && c.commit.author && c.commit.author.date, url: c.html_url
+    }));
+    return { ok: true, local: app.getVersion(), releases, commits, repoUrl: repoBase() };
+  }
+
   // ---------- IPC ----------
   function register() {
     ipcMain.handle('tts-status', () => status());
@@ -508,13 +603,15 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-install-runtime', () => installFromUrl(buildRuntimeUrls()));
     ipcMain.handle('tts-install-voice', (e, role) => installVoice(String(role || '')));
     ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
+    ipcMain.handle('tts-check-update', () => checkUpdate());
+    ipcMain.handle('open-external', (e, url) => { try { require('electron').shell.openExternal(String(url || '')); return { ok: true }; } catch (err) { return { ok: false, error: err && err.message }; } });
     ipcMain.handle('tts-install-state', () => installState);
     ipcMain.handle('tts-open-cache', () => {
       try { require('electron').shell.openPath(cacheDir); return { ok: true, dir: cacheDir }; } catch (e) { return { ok: false, error: e && e.message }; }
     });
   }
 
-  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, installFromUrl, installState: () => installState };
+  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, dataRoot, cacheDir: () => cacheDir, installFromUrl, installState: () => installState };
 }
 
 module.exports = { createTtsManager, DEFAULT_CONFIG };

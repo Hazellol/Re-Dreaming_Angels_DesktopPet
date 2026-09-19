@@ -158,6 +158,13 @@
   /* ============ 对话配置视图 ============ */
   #view-ai { overflow-y: auto; padding: 16px 22px 12px; }
   #view-settings { overflow-y: auto; padding: 16px 22px 12px; }
+  /* 自适应：内容居中且限制最大宽度（大屏不散），窗口变窄时自动换行 */
+  #view-settings > .ai-card, #view-ai > .ai-card { max-width: 920px; margin-left: auto; margin-right: auto; }
+  @media (max-width: 760px) {
+    .ai-row { flex-wrap: wrap; }
+    .ai-row > label { flex: 1 0 100%; }
+    #view-settings, #view-ai { padding: 12px 12px 10px; }
+  }
   .ai-card {
     background: #fff; border: 3px solid #3f3140; border-radius: 18px;
     padding: 16px 20px; margin-bottom: 14px;
@@ -335,6 +342,15 @@
       </div>
       <!-- 设置视图 -->
       <div id="view-settings" class="view" style="display:none;">
+        <div class="ai-card">
+          <h3>🔄 版本与更新</h3>
+          <div class="ai-btns" style="margin:0;">
+            <button class="ai-btn pink small" id="tts-check-update">🔄 检测更新</button>
+            <button class="ai-btn small" id="btn-open-repo">🌐 打开项目仓库</button>
+          </div>
+          <div class="ai-hint" id="update-result" style="margin-top:8px;">点击「检测更新」查询项目仓库的最新版本与更新日志</div>
+          <pre id="update-log" style="display:none;max-height:160px;overflow:auto;background:#faf3f7;border-radius:8px;padding:8px;font:11px/1.5 monospace;white-space:pre-wrap;margin-top:8px;color:#5a4a54;"></pre>
+        </div>
         <div class="ai-card">
           <h3>🎙 语音（TTS · 本地合成）</h3>
           <div class="ai-row check">
