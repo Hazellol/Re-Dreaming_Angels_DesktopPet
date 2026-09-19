@@ -170,7 +170,9 @@
     const bar = ttsEl('tts-install-bar');
     const msg = ttsEl('tts-install-msg');
     if (bar) bar.style.width = (s.total ? Math.min(100, Math.round((s.got / s.total) * 100)) : (s.phase === 'done' ? 100 : 0)) + '%';
-    if (msg) msg.textContent = ({ idle: '下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用', download: '下载中…', extract: '解压中…', detect: '探测运行时…', done: '✅ 安装完成，可直接使用', error: '❌ ' + (s.message || '失败') }[s.phase] || s.message || '') + (s.phase === 'download' && s.message ? '（' + s.message + '）' : '');
+    const partTag = (s.parts > 1 && s.part) ? ('【包 ' + s.part + '/' + s.parts + '】') : '';
+    const label = ({ idle: '下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用', download: '下载中…', extract: '解压中…', detect: '探测运行时…', done: '✅ 安装完成，可直接使用', error: '❌ ' + (s.message || '失败') }[s.phase] || s.message || '');
+    if (msg) msg.textContent = partTag + label + ((s.phase === 'download' && s.message) ? '（' + String(s.message).replace(/^第 \d+\/\d+ 包 /, '') + '）' : '');
   }
   try { dk.onTtsInstallProgress(renderInstall); } catch (e) { /* noop */ }
   (async () => { try { renderInstall(await dk.ttsInstallState()); } catch (e) { /* noop */ } })();

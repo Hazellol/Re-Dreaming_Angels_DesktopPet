@@ -370,27 +370,37 @@ function createTtsManager(ctx) {
     walk(root, 0);
     return found;
   }
-  async function installFromUrl(url) {
-    if (!url) return { ok: false, error: '未提供下载地址' };
+  // 支持多个包：GitHub Release 单文件上限 2GB → 运行时常被切成多卷；
+  // 多卷依次下载、各自解压到**同一目录**即可还原完整结构。
+  function parseUrls(v) {
+    if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean);
+    return String(v || '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  }
+  async function installFromUrl(urlOrUrls) {
+    const urls = parseUrls(urlOrUrls);
+    if (!urls.length) return { ok: false, error: '未提供下载地址' };
     const root = pathMod.join(userData, 'tts');
     const zipPath = pathMod.join(root, '_download.zip');
     try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
     try {
-      setInstall({ phase: 'download', got: 0, total: 0, message: '开始下载…' });
-      const r = await downloadTo(url, zipPath, (got, total) => {
-        setInstall({ phase: 'download', got, total, message: '下载中 ' + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
-      });
-      setInstall({ phase: 'extract', got: r.bytes, total: r.bytes, message: '下载完成，正在解压…' });
-      await expandArchive(zipPath, root);
-      setInstall({ phase: 'detect', message: '解压完成，正在探测运行时…' });
+      for (let i = 0; i < urls.length; i++) {
+        const tag = urls.length > 1 ? ('第 ' + (i + 1) + '/' + urls.length + ' 包 ') : '';
+        setInstall({ phase: 'download', part: i + 1, parts: urls.length, got: 0, total: 0, message: tag + '开始下载…' });
+        const r = await downloadTo(urls[i], zipPath, (got, total) => {
+          setInstall({ phase: 'download', part: i + 1, parts: urls.length, got, total, message: tag + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
+        });
+        setInstall({ phase: 'extract', part: i + 1, parts: urls.length, got: r.bytes, total: r.bytes, message: tag + '解压中…' });
+        await expandArchive(zipPath, root);
+        try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
+      }
+      setInstall({ phase: 'detect', message: '全部解压完成，正在探测运行时…' });
       const det = detectRuntime(root);
       if (!det.python || !det.script) {
-        setInstall({ phase: 'error', message: '未找到 python.exe 或 api_v2.py（请确认压缩包结构）' });
+        setInstall({ phase: 'error', message: '未找到 python.exe 或 api_v2.py（请确认压缩包内容）' });
         return { ok: false, error: '未找到运行时/脚本', detected: det };
       }
       save({ mode: 'managed', runtimePath: det.python, serverScript: det.script, enabled: true });
       setInstall({ phase: 'done', message: '安装完成，可直接使用' });
-      try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
       return { ok: true, runtimePath: det.python, serverScript: det.script };
     } catch (e) {
       setInstall({ phase: 'error', message: String(e && e.message).slice(0, 200) });
