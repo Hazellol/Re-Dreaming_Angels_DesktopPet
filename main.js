@@ -361,7 +361,7 @@ function applyWindowRegion(rects) {
     const buf = win.getNativeWindowHandle();
     const hwnd = (typeof buf.readBigUInt64LE === 'function') ? buf.readBigUInt64LE(0) : BigInt(buf.readUInt32LE(0));
     if (!list.length) { regionApi.SetWindowRgn(hwnd, 0, 1); return; }   // NULL region = 恢复整窗
-    const sf = (screen.getPrimaryDisplay() || {}).scaleFactor || 1;     // CSS px → 物理像素
+    const sf = winScaleFactor();                                        // CSS px → 物理像素（窗口所在显示器）
     let acc = 0;
     for (const r of list) {
       const rr = regionApi.CreateRectRgn(
@@ -495,10 +495,62 @@ function appIcon(size) {
   return nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
 }
 
-function createWindow() {
-  const display = screen.getPrimaryDisplay();
-  const { x, y, width, height } = display.bounds;
+// ===== 多显示器：桌宠窗口覆盖"所有显示器工作区的并集" =====
+// 扩展屏幕模式下三小只才能被拖到/走到另一个屏幕（早期只取主显示器 → 角色被窗口边界卡住）。
+// ⚠️ 多屏 DPI 不同时不能直接相加 bounds：Electron 的 bounds 是"各屏自己的 DIP"，
+//    但坐标 x/y 是主屏 DIP 基准。做法：全部换算成**物理像素**求并集，再除回**主屏缩放**得到窗口 DIP。
+function desktopUnionBounds() {
+  const primary = screen.getPrimaryDisplay();
+  const baseSf = primary.scaleFactor || 1;
+  const displays = screen.getAllDisplays();
+  // ⚠️ 已实测：各屏 DPI 不一致时（如主屏 1.5 / 副屏 1.0），Electron 的 DIP 坐标体系无法正确
+  // 表达跨屏窗口——系统会按"窗口所在屏的 DPI"钳制尺寸（实测 3670 DIP 被钳到 2944），
+  // 强行设置会得到尺寸/坐标都错误的窗口。这里**自动回退到主显示器**（保持既有行为安全）。
+  const mixedDpi = displays.some((d) => Math.abs((d.scaleFactor || 1) - baseSf) > 0.01);
+  if (mixedDpi) {
+    const w = primary.workArea;
+    if (process.env.QX_MSLOG === '1' || POLL_LOG) console.log('[UNION] mixed-DPI displays → fallback to primary', w.width + 'x' + w.height);
+    return { x: w.x, y: w.y, width: w.width, height: w.height };
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const d of displays) {
+    const b = d.workArea || d.bounds;
+    const sf = d.scaleFactor || 1;
+    minX = Math.min(minX, b.x * baseSf);
+    minY = Math.min(minY, b.y * baseSf);
+    maxX = Math.max(maxX, b.x * baseSf + b.width * sf);
+    maxY = Math.max(maxY, b.y * baseSf + b.height * sf);
+  }
+  if (!isFinite(minX)) {
+    const w = primary.workArea;
+    return { x: w.x, y: w.y, width: w.width, height: w.height };
+  }
+  return {
+    x: Math.round(minX / baseSf), y: Math.round(minY / baseSf),
+    width: Math.round((maxX - minX) / baseSf), height: Math.round((maxY - minY) / baseSf)
+  };
+}
+// 窗口所在显示器的缩放比（多屏 DPI 不同时，窗口区域换算要用它而不是主显示器）
+function winScaleFactor() {
+  try {
+    const b = win.getBounds();
+    const d = screen.getDisplayNearestPoint({ x: Math.round(b.x + 2), y: Math.round(b.y + 2) });
+    return (d && d.scaleFactor) || 1;
+  } catch (e) {
+    return (screen.getPrimaryDisplay() || {}).scaleFactor || 1;
+  }
+}
 
+function createWindow() {
+  const { x, y, width, height } = desktopUnionBounds();   // 覆盖全部显示器（多屏扩展支持）
+  if (process.env.QX_MSLOG === '1' || POLL_LOG) {
+    try {
+      console.log('[DISPLAYS]', screen.getAllDisplays().map((d) =>
+        `id=${d.id} bounds=${d.bounds.width}x${d.bounds.height}@${d.bounds.x},${d.bounds.y} sf=${d.scaleFactor} work=${d.workArea.width}x${d.workArea.height}@${d.workArea.x},${d.workArea.y}`
+      ).join(' | '));
+      console.log('[UNION]', JSON.stringify({ x, y, width, height }));
+    } catch (e) { /* noop */ }
+  }
   win = new BrowserWindow({
     x, y, width, height,
     transparent: true,
@@ -531,6 +583,15 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
   startMousePoll();
   startOcclusionWatch();
+  // 显示器插拔 / 分辨率或缩放变化 → 重新贴合"所有显示器并集"（多屏扩展支持）
+  const applyUnionBounds = () => {
+    if (!win || win.isDestroyed()) return;
+    try { win.setBounds(desktopUnionBounds()); } catch (e) { /* noop */ }
+    regionKey = '';   // 强制下次重算窗口区域（缩放/尺寸可能已变）
+  };
+  screen.on('display-added', applyUnionBounds);
+  screen.on('display-removed', applyUnionBounds);
+  screen.on('display-metrics-changed', applyUnionBounds);
 
   // 调试截图参数：electron . --screenshot [delayMs] ["anim0=动作_X&anim1=表情_Y"]
   const shotArg = process.argv.indexOf('--screenshot');

@@ -105,7 +105,8 @@
       hidden: false,             // 控制台/托盘开关：隐藏=休息（不渲染/不互动/不走动）
       vel: { x: 0, y: 0 },       // 重力/甩飞速度（世界单位/秒，y 向上）
       physBounced: false,        // 本次甩飞是否已撞墙（撞墙第一下播 pat_xxx/切反弹姿态）
-      physWasBusy: false         // 上一次物理活跃状态（停稳瞬间恢复待机用）
+      physWasBusy: false,        // 上一次物理活跃状态（停稳瞬间恢复待机用）
+      motionPhase: null          // 物理姿势标记（drag/fly/bounce）；对话等主动姿势为 null
     };
   }
   // 重力开关：开启后三小只落地 + 拖动甩飞 + 边框反弹（缓）；默认关
@@ -212,6 +213,7 @@
   const clearFaceTimers = {};
   function changeFace(key, poseId) {
     const c = idols[key], cfg = c.cfg;
+    if (dk.env('QX_ANIMLOG') === '1') console.log('[FACE] changeFace(' + key + ',' + poseId + ')');
     if (!c.state) return false;   // 资源已释放（隐藏优化）：安全兜底
     if (c.poseId !== 0) return false;
     if (c.walking) return false;
@@ -220,6 +222,7 @@
     c.state.setAnimation(0, '动作_' + s.name, true);
     c.state.setAnimation(1, '表情_' + (s.face || s.name), true);
     c.poseId = poseId;
+    c.motionPhase = null;   // 主动姿势（对话/捏捏）：清除"物理姿势"标记，避免被落地恢复误清
     if (clearFaceTimers[key]) clearTimeout(clearFaceTimers[key]);
     clearFaceTimers[key] = setTimeout(() => clearIdolFace(key), CFG.POSE_HOLD);
     return true;
@@ -228,6 +231,7 @@
     const c = idols[key];
     if (dk.env('QX_ANIMLOG') === '1') console.log('[ANIMDBG] clearIdolFace(' + key + ') ' + new Error().stack.split('\n')[2]);
     if (clearFaceTimers[key]) { clearTimeout(clearFaceTimers[key]); clearFaceTimers[key] = null; }
+    c.motionPhase = null;
     if (!c.state) { c.poseId = 0; return; }   // 资源已释放（隐藏优化）：安全兜底
     c.state.setAnimation(0, '动作_待机', true);
     c.state.setAnimation(1, '表情_常态', true);
@@ -322,6 +326,7 @@
   let bubbleHideTimer = null;   // 气泡隐藏定时器（showBubble/showBubbleTyping 共用句柄，可取消）
   let bubbleIsChat = false;     // true=当前气泡是"聊天回复气泡"（拖动角色时保持显示，不消失）
   function showBubble(msgText, holdMs, role) {
+    if (dk.env('QX_ANIMLOG') === '1') console.log('[BUBBLE] show role=' + role + ' hold=' + holdMs + ' rejected=' + bubbleLock);
     if (bubbleLock) return false;
     bubbleLock = true;
     bubbleIsChat = false;   // 普通互动/待机气泡
@@ -656,18 +661,9 @@
     if (!p) return;
     const c = idols[key];
     if (!c.state) return;   // 资源已释放（隐藏优化）：安全兜底
+    c.motionPhase = phase;  // 物理姿势标记（被拎/飞行/反弹）——落地恢复只清这类，绝不误伤对话姿势
     c.state.setAnimation(0, '动作_' + p[0], true);
     c.state.setAnimation(1, '表情_' + (p[1] || p[0]), true);
-  }
-  // 当前动画是否属于"物理动作姿势"（被拎 drag / 飞行 fly / 反弹 bounce）
-  // 只有这些姿势在"落地停稳"时才应该被恢复成待机；对话/捏捏等主动姿势不受物理逻辑干扰。
-  function isPhysicalMotionAnim(key, name) {
-    if (!name) return false;
-    for (const phase of Object.keys(MOTION_POSES)) {
-      const p = MOTION_POSES[phase] && MOTION_POSES[phase][key];
-      if (p && ('动作_' + p[0]) === name) return true;
-    }
-    return false;
   }
 
   // ================= 命中 / 拖动 =================
@@ -2470,13 +2466,10 @@
         const busy = idolPhysicallyBusy(key);
         if (c.physWasBusy && !busy) {
           // 落地停稳 → 只恢复"物理姿势"（被拎/飞行/反弹）。
-          // ⚠️ 两个坑都在这里踩过：
-          //   ① 早期无条件 clearIdolFace → 重力下 busy 每帧抖动 → 动画每帧被重置（待机呼吸周期性停顿）
-          //   ② 改成"只要不是待机就重置" → 待机对话框的姿势动作刚播一帧就被打死（用户实测 bug）
-          // 正确判据：**当前动画必须属于物理动作姿势**才恢复。
-          const tr = c.state && c.state.tracks[0];
-          const curName = (tr && tr.animation) ? tr.animation.name : '';
-          if (isPhysicalMotionAnim(key, curName)) clearIdolFace(key);
+          // ⚠️ 判据必须是**显式标记 `c.motionPhase`**，不能靠动画名：
+          //   物理姿势名（兴奋/害羞/生气/无奈/心累…）与待机对话姿势名**完全重叠**，
+          //   按名字判断会把"对话姿势"误清 → 姿势刚播一帧就变回待机（用户实测 bug）。
+          if (c.motionPhase) clearIdolFace(key);
         }
         c.physWasBusy = busy;
         stepGravity(key, dt);
