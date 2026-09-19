@@ -93,6 +93,8 @@
     if (ttsEl('tts-on-bubble')) ttsEl('tts-on-bubble').checked = !!(c.speakOn && c.speakOn.bubble);
     if (ttsEl('tts-on-chatter')) ttsEl('tts-on-chatter').checked = !!(c.speakOn && c.speakOn.chatter);
     if (ttsEl('tts-by-role')) ttsEl('tts-by-role').checked = c.saveByRole !== false && !!c.saveByRole;
+    if (ttsEl('tts-ref-fixed')) ttsEl('tts-ref-fixed').value = c.refFixed || '';
+    document.querySelectorAll('#tts-ref-strategy .tts-ref-btn').forEach((b) => b.classList.toggle('pink', b.dataset.ref === (c.refStrategy || 'random')));
     document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mode === (c.mode || 'external')));
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.classList.toggle('pink', b.dataset.device === (c.device || 'cuda')));
     // 按钮语义：external（已有服务）模式下"启动服务"无意义 → 禁用并给出提示（用户实测困惑点）
@@ -133,6 +135,9 @@
   document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((x) => x.classList.toggle('pink', x === b));
   }));
+  document.querySelectorAll('#tts-ref-strategy .tts-ref-btn').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#tts-ref-strategy .tts-ref-btn').forEach((x) => x.classList.toggle('pink', x === b));
+  }));
   function ttsCollect() {
     const modeBtn = document.querySelector('#tts-mode .tts-mode-btn.pink');
     const devBtn = document.querySelector('#tts-device .tts-device-btn.pink');
@@ -147,6 +152,8 @@
       downloadUrl: (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '',
       idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
       saveByRole: !!(ttsEl('tts-by-role') && ttsEl('tts-by-role').checked),
+      refStrategy: (document.querySelector('#tts-ref-strategy .tts-ref-btn.pink') || { dataset: {} }).dataset.ref || 'random',
+      refFixed: (ttsEl('tts-ref-fixed') && ttsEl('tts-ref-fixed').value.trim()) || '',
       speakOn: {
         chat: !!(ttsEl('tts-on-chat') && ttsEl('tts-on-chat').checked),
         bubble: !!(ttsEl('tts-on-bubble') && ttsEl('tts-on-bubble').checked),

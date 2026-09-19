@@ -38,7 +38,13 @@ const DEFAULT_CONFIG = {
   downloadUrl: '',                // 便携包下载地址（「桌宠启动」模式的一键下载）
   autoModelPath: true,            // 自动随请求指定语音包里的模型权重（保证音色正确）
   logRequests: true,              // 打印合成请求（诊断音色/参数问题）
-  saveByRole: false               // true=合成音频按角色分目录保存（文件名含情绪与台词片段，便于整理）
+  saveByRole: false,              // true=合成音频按角色分目录保存（文件名含情绪与台词片段，便于整理）
+  // 参考音频选择策略（GPT-SoVITS 是 zero-shot：参考音频直接决定音色细节）
+  //   random = 按情绪从语音包随机挑（默认，语气更丰富）
+  //   fixed  = 固定使用指定参考（可与云端 WebUI 完全一致 → 便于 A/B 对比音色）
+  refStrategy: 'random',
+  refFixed: '',                   // refStrategy=fixed 时的参考音频文件名（如 Level_..._74490001.wav）
+  refFixedText: ''                // 固定参考时对应的参考文本（留空则从 emotions.json 里查）
 };
 
 function createTtsManager(ctx) {
@@ -82,6 +88,7 @@ function createTtsManager(ctx) {
     if (process.env.QX_TTS_VOICES) cfg.voicesDir = process.env.QX_TTS_VOICES;
     if (process.env.QX_TTS_BYROLE === '1') cfg.saveByRole = true;
     if (process.env.QX_TTS_BYROLE === '0') cfg.saveByRole = false;
+    if (process.env.QX_TTS_REF) { cfg.refStrategy = 'fixed'; cfg.refFixed = process.env.QX_TTS_REF; }
   } catch (e) { /* noop */ }
 
   // ---------- 语音包（情绪映射）----------
@@ -102,15 +109,32 @@ function createTtsManager(ctx) {
   function pickReference(role, mood) {
     const emo = loadEmotions(role);
     if (!emo || !emo.map) return null;
+    const base = pathMod.join(voicesRoot(), role);
+    const resolve = (name) => {
+      const n = pathMod.basename(name);
+      const cands = [pathMod.join(base, 'refs', n), pathMod.join(base, n)];
+      for (const c of cands) { try { if (fsMod.existsSync(c)) return c; } catch (e) { /* noop */ } }
+      return null;
+    };
+    // 固定参考策略：与云端 WebUI 用同一条参考 → 音色可直接对比
+    if (cfg.refStrategy === 'fixed' && cfg.refFixed) {
+      const audio = resolve(cfg.refFixed);
+      if (audio) {
+        let text = cfg.refFixedText || '';
+        if (!text) {
+          for (const list of Object.values(emo.map)) {
+            const hit = (list || []).find((it) => pathMod.basename(it.ref) === pathMod.basename(cfg.refFixed));
+            if (hit) { text = hit.text || ''; break; }
+          }
+        }
+        return { audio, text };
+      }
+    }
     const list = emo.map[mood] || emo.map[emo.default || 'neutral'];
     if (!list || !list.length) return null;
     const pick = list[Math.floor(Math.random() * list.length)];
-    const base = pathMod.join(voicesRoot(), role);
-    const name = pathMod.basename(pick.ref);
-    // 语音包结构：<voices>/<role>/refs/<file>；兼容扁平放置
-    const cands = [pathMod.join(base, 'refs', name), pathMod.join(base, name)];
-    let audio = cands[0];
-    for (const c of cands) { try { if (fsMod.existsSync(c)) { audio = c; break; } } catch (e) { /* noop */ } }
+    const audio = resolve(pick.ref);
+    if (!audio) return null;
     return { audio, text: pick.text || '' };
   }
 
