@@ -335,6 +335,45 @@
       <!-- 设置视图 -->
       <div id="view-settings" class="view" style="display:none;">
         <div class="ai-card">
+          <h3>🎙 语音（TTS · 本地合成）</h3>
+          <div class="ai-row check">
+            <label>启用语音</label>
+            <input type="checkbox" id="tts-enabled">
+            <span class="ai-hint">默认关闭。需要本地已安装 GPT-SoVITS 语音包/服务；未安装时静默降级（不影响聊天）</span>
+          </div>
+          <div class="ai-row">
+            <label>运行方式</label>
+            <div class="ai-btns" id="tts-mode" style="flex:1;margin:0;">
+              <button class="ai-btn small tts-mode-btn" data-mode="external">已有服务</button>
+              <button class="ai-btn small tts-mode-btn" data-mode="managed">桌宠启动</button>
+            </div>
+          </div>
+          <div class="ai-row">
+            <label>推理设备</label>
+            <div class="ai-btns" id="tts-device" style="flex:1;margin:0;">
+              <button class="ai-btn small tts-device-btn" data-device="cuda">GPU（快）</button>
+              <button class="ai-btn small tts-device-btn" data-device="cpu">CPU（省显存）</button>
+            </div>
+          </div>
+          <div class="ai-row"><label>服务地址</label><input type="text" id="tts-host" style="width:110px;"><input type="text" id="tts-port" style="width:70px;margin-left:6px;"></div>
+          <div class="ai-row"><label>运行时</label><input type="text" id="tts-runtime" placeholder="便携包里的 python.exe（桌宠启动模式）" style="flex:1;"></div>
+          <div class="ai-row"><label>服务脚本</label><input type="text" id="tts-script" placeholder="服务脚本路径（桌宠启动模式）" style="flex:1;"></div>
+          <div class="ai-row"><label>空闲卸载</label><input type="text" id="tts-idle" style="width:70px;"><span class="ai-hint">秒（无请求后释放显存/内存）</span></div>
+          <div class="ai-row check"><label>聊天回复朗读</label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复自动转语音</span></div>
+          <div class="ai-row check"><label>待机台词朗读</label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词（较频繁）</span></div>
+          <div class="ai-row check"><label>互聊朗读</label><input type="checkbox" id="tts-on-chatter"></div>
+          <div class="ai-row" style="align-items:flex-start;"><label>高级(JSON)</label>
+            <textarea id="tts-adv" style="flex:1;height:64px;font:11px monospace;" placeholder='{"apiPath":"/tts","params":{...},"extraBody":{...},"refFields":{"audio":"ref_audio_path","text":"prompt_text"}}'></textarea>
+          </div>
+          <div class="ai-btns" style="margin-top:8px;">
+            <button class="ai-btn pink small" id="tts-save">💾 保存并应用</button>
+            <button class="ai-btn small" id="tts-probe">🔍 探测服务</button>
+            <button class="ai-btn small" id="tts-start">▶ 启动服务</button>
+            <button class="ai-btn small" id="tts-stop">■ 停止服务</button>
+          </div>
+          <div class="ai-hint" id="tts-status-line" style="margin-top:8px;">状态：加载中…</div>
+        </div>
+        <div class="ai-card">
           <h3>🖥 多显示器</h3>
           <div class="ai-row" style="align-items:flex-start;">
             <label>运行屏幕</label>

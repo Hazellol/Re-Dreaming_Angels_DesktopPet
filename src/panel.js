@@ -77,6 +77,79 @@
     });
   });
 
+  // ================= 设置页：语音（TTS） =================
+  const ttsEl = (id) => document.getElementById(id);
+  function renderTts(s) {
+    if (!s) return;
+    const c = s.config || {};
+    if (ttsEl('tts-enabled')) ttsEl('tts-enabled').checked = !!c.enabled;
+    if (ttsEl('tts-host')) ttsEl('tts-host').value = c.host || '127.0.0.1';
+    if (ttsEl('tts-port')) ttsEl('tts-port').value = c.port || 9880;
+    if (ttsEl('tts-runtime')) ttsEl('tts-runtime').value = c.runtimePath || '';
+    if (ttsEl('tts-script')) ttsEl('tts-script').value = c.serverScript || '';
+    if (ttsEl('tts-idle')) ttsEl('tts-idle').value = c.idleUnloadSec || 300;
+    if (ttsEl('tts-on-chat')) ttsEl('tts-on-chat').checked = !!(c.speakOn && c.speakOn.chat);
+    if (ttsEl('tts-on-bubble')) ttsEl('tts-on-bubble').checked = !!(c.speakOn && c.speakOn.bubble);
+    if (ttsEl('tts-on-chatter')) ttsEl('tts-on-chatter').checked = !!(c.speakOn && c.speakOn.chatter);
+    document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mode === (c.mode || 'external')));
+    document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.classList.toggle('pink', b.dataset.device === (c.device || 'cuda')));
+    if (ttsEl('tts-adv')) {
+      try {
+        ttsEl('tts-adv').value = JSON.stringify({
+          apiPath: c.apiPath, params: c.params, extraBody: c.extraBody,
+          refFields: c.refFields, refMode: c.refMode, healthPath: c.healthPath
+        }, null, 1);
+      } catch (e) { /* noop */ }
+    }
+    const line = ttsEl('tts-status-line');
+    if (line) {
+      const parts = [];
+      parts.push(s.running ? '🟢 服务运行中' : '⚪ 服务未运行');
+      parts.push(c.enabled ? '语音已启用' : '语音已关闭');
+      parts.push('设备 ' + (c.device || 'cuda'));
+      parts.push('语音包 ' + (s.hasVoices ? '已就绪' : '缺失（需下载/放置 emotions.json + 参考音频）'));
+      if (s.lastError) parts.push('⚠ ' + s.lastError);
+      line.textContent = '状态：' + parts.join(' · ') + '　（目录：' + (s.voicesRoot || '') + '）';
+    }
+  }
+  async function refreshTts() { try { renderTts(await dk.ttsStatus()); } catch (e) { /* noop */ } }
+  try { dk.onTtsStatus(renderTts); } catch (e) { /* noop */ }
+  refreshTts();
+  document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((x) => x.classList.toggle('pink', x === b));
+  }));
+  document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#tts-device .tts-device-btn').forEach((x) => x.classList.toggle('pink', x === b));
+  }));
+  function ttsCollect() {
+    const modeBtn = document.querySelector('#tts-mode .tts-mode-btn.pink');
+    const devBtn = document.querySelector('#tts-device .tts-device-btn.pink');
+    const patch = {
+      enabled: !!(ttsEl('tts-enabled') && ttsEl('tts-enabled').checked),
+      mode: modeBtn ? modeBtn.dataset.mode : 'external',
+      device: devBtn ? devBtn.dataset.device : 'cuda',
+      host: (ttsEl('tts-host') && ttsEl('tts-host').value.trim()) || '127.0.0.1',
+      port: parseInt(ttsEl('tts-port') && ttsEl('tts-port').value, 10) || 9880,
+      runtimePath: (ttsEl('tts-runtime') && ttsEl('tts-runtime').value.trim()) || '',
+      serverScript: (ttsEl('tts-script') && ttsEl('tts-script').value.trim()) || '',
+      idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
+      speakOn: {
+        chat: !!(ttsEl('tts-on-chat') && ttsEl('tts-on-chat').checked),
+        bubble: !!(ttsEl('tts-on-bubble') && ttsEl('tts-on-bubble').checked),
+        chatter: !!(ttsEl('tts-on-chatter') && ttsEl('tts-on-chatter').checked)
+      }
+    };
+    try {
+      const adv = JSON.parse((ttsEl('tts-adv') && ttsEl('tts-adv').value) || '{}');
+      Object.assign(patch, adv);
+    } catch (e) { /* JSON 非法则忽略高级项 */ }
+    return patch;
+  }
+  if (ttsEl('tts-save')) ttsEl('tts-save').addEventListener('click', async () => { try { renderTts(await dk.ttsConfig(ttsCollect())); } catch (e) { /* noop */ } });
+  if (ttsEl('tts-probe')) ttsEl('tts-probe').addEventListener('click', async () => { try { await dk.ttsProbe(); } catch (e) { /* noop */ } refreshTts(); });
+  if (ttsEl('tts-start')) ttsEl('tts-start').addEventListener('click', async () => { try { const r = await dk.ttsStart(); if (r && !r.ok) alert('启动失败：' + (r.error || '')); } catch (e) { /* noop */ } refreshTts(); });
+  if (ttsEl('tts-stop')) ttsEl('tts-stop').addEventListener('click', async () => { try { await dk.ttsStop(); } catch (e) { /* noop */ } refreshTts(); });
+
   // ================= 设置页：多显示器（运行屏幕） =================
   const screenBtns = Array.from(document.querySelectorAll('#set-screen-modes .screen-mode'));
   function renderScreenMode(mode) {

@@ -435,6 +435,7 @@
   // —— 互动 ——
   function interact(key) {
     if (dialog.open) return;
+    stopTts();   // 用户碰角色：打断正在播放的语音
     if (bubbleLock && bubbleRole === key) return;
     const cfg = ROLES[key];
     const msg = pickMessage('interact', cfg.i18nId);
@@ -886,6 +887,37 @@
       const a = new Audio(petUrl(file));
       a.volume = sfxEffVolume();
       a.play().catch(() => { /* autoplay 被拒时静默 */ });
+    } catch (e) { /* noop */ }
+  }
+
+  // ================= TTS 语音（本地合成：文本 + 情绪 → 语音播放）=================
+  // 默认关闭（控制台「🎙 语音」页开启）；服务未装/未启动/失败一律静默降级，聊天不受影响。
+  let ttsSpeakOnChat = false;
+  let ttsVolume = 1;
+  let currentTtsAudio = null;
+  function applyTtsStatus(s) {
+    if (!s) return;
+    ttsSpeakOnChat = !!(s.enabled && s.config && s.config.speakOn && s.config.speakOn.chat);
+    ttsVolume = Math.min(1, Math.max(0, ((s.config && s.config.volume) || 100) / 100));
+  }
+  try { dk.onTtsStatus(applyTtsStatus); } catch (e) { /* noop */ }
+  (async () => { try { applyTtsStatus(await dk.ttsStatus()); } catch (e) { /* noop */ } })();
+  function stopTts() {
+    try { if (currentTtsAudio) { currentTtsAudio.pause(); currentTtsAudio = null; } } catch (e) { /* noop */ }
+  }
+  async function speakTts(role, text, mood) {
+    if (!ttsSpeakOnChat) return;
+    const t = String(text || '').trim();
+    if (!t) return;
+    try {
+      const r = await dk.ttsSpeak({ role, text: t, mood: mood || 'neutral' });
+      if (!r || !r.ok || !r.url) { if (r && r.error) console.log('[TTS] skip:', r.error); return; }
+      stopTts();
+      const a = new Audio(r.url);
+      a.volume = Math.min(1, (audioCfg.master / 100) * ttsVolume);
+      currentTtsAudio = a;
+      a.play().catch(() => { /* 自动播放被拒：静默 */ });
+      console.log('[TTS] speak', role, mood || 'neutral', r.cached ? '(cached)' : '');
     } catch (e) { /* noop */ }
   }
   function playPat(key) {
@@ -1857,6 +1889,7 @@
     chat.busy = false;
     if (!aiCfg.connected) { aiCfg.connected = true; saveAICfg(); }   // 真实聊天成功：标记"连通"（捏捏 AI 反应条件）
     if (pr.mood) applyMoodPose(role, pr.mood);   // 情绪 → 角色动作表情（实时）
+    speakTts(role, pureText || res.content, pr.mood);   // TTS：回复文本 + 情绪 → 语音（默认关闭）
     const showText = pureText || res.content;
     if (chatMode() === 'panel') {
       showTyping(showText);   // 面板打字机

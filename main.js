@@ -5,6 +5,7 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, clipboard, dialog, globalShortcut, protocol, net } = require('electron');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
+const { createTtsManager } = require('./src/main-tts');
 const path = require('path');
 
 // ===== Win32 窗口区域（SetWindowRgn）：把窗口"形状"限制为角色/浮层矩形 ====
@@ -36,6 +37,7 @@ const fs = require('fs');
 let win = null;
 let panel = null;
 let tray = null;
+let tts = null;   // TTS 管理器（src/main-tts.js）
 const DESKTOP = true;   // 仅桌面版（房间版已移除）
 const NOTOP = process.env.QX_NOTOP === '1';
 // 用户歌曲目录（播放器"添加歌曲"导入处；打包版 assets 只读 → 用户曲目统一放这里）
@@ -809,6 +811,12 @@ app.whenReady().then(() => {
       try {
         const u = new URL(req.url);
         const rel = decodeURIComponent((u.hostname || '') + (u.pathname || '')).replace(/^\/+/, '');
+        // TTS 合成音频（userData/tts_cache/xxx.wav）→ renderer 用 <audio src="pet://tts/xxx.wav"> 播放
+        if (rel.startsWith('tts/')) {
+          const f2 = path.join(app.getPath('userData'), 'tts_cache', path.basename(rel));
+          if (fs.existsSync(f2)) return net.fetch(pathToFileURL(f2).toString());
+          return new Response('', { status: 404 });
+        }
         let abs = path.join(__dirname, 'assets', rel);
         if (!fs.existsSync(abs)) {
           const cand = path.join(USER_BGM_DIR, path.basename(rel));
@@ -821,6 +829,21 @@ app.whenReady().then(() => {
       }
     });
   } catch (e) { console.error('[PET-PROTOCOL] init failed', e); }
+  // TTS（本地语音合成）：默认关闭，用户在控制台「🎙 语音」页开启
+  try {
+    tts = createTtsManager({ app, ipcMain, getWin: () => win });
+    tts.register();
+    setInterval(() => { try { tts.probe(); } catch (e) { /* noop */ } }, 30000);   // 周期探活（状态准确）
+    console.log('[TTS] manager ready (enabled =', tts.config().enabled + ')');
+    // 调试：QX_TTS_TEST='qianxia|你好呀|happy' → 启动 8s 后自动合成一句（验证链路，无需 UI 操作）
+    if (process.env.QX_TTS_TEST) {
+      setTimeout(async () => {
+        const [role, text, mood] = String(process.env.QX_TTS_TEST).split('|');
+        const r = await tts.synthesize({ role: role || 'qianxia', text: text || '测试语音', mood: mood || 'happy' });
+        console.log('[TTS-TEST]', JSON.stringify(r).slice(0, 400));
+      }, 8000);
+    }
+  } catch (e) { console.error('[TTS] init failed', e); }
   createWindow();
   // ⚠️ 控制台改为**按需创建**（懒加载）：它曾是常驻的独立渲染进程（≈100MB+），
   // 用户反馈内存占用高 → 启动不创建，从托盘/右键菜单打开时才建，关闭即销毁。
