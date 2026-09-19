@@ -13,6 +13,7 @@
 param(
   [string]$Repo = 'Hazellol/Re-Dreaming_Angels_DesktopPet',
   [string]$Message = '',
+  [switch]$Force,          # 强制推送（远端为独立历史时使用，会覆盖远端分支）
   [switch]$SkipPush,
   [switch]$SkipRelease,
   [switch]$DryRun
@@ -45,6 +46,43 @@ $pkg = Get-Content (Join-Path $projRoot 'package.json') -Raw -Encoding UTF8 | Co
 $version = $pkg.version
 $tag = "v$version"
 Write-Host "项目：$($pkg.name)　版本：$version　标签：$tag"
+
+# ---------- 0.5 网络与证书自检（自动修复常见环境问题） ----------
+Write-Step '网络与证书自检'
+$prevEap0 = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+# (1) TLS 后端：代理或自签根证书环境下 git 自带 CA 池会报 SSL 错误 → 改用 Windows 系统证书库
+$sslBackend = (git config --global --get http.sslBackend) 2>$null
+if ($sslBackend -ne 'schannel') {
+  git config --global http.sslBackend schannel 2>$null
+  Write-Host '已设置 git TLS 后端为 schannel（Windows 系统证书库）'
+} else {
+  Write-Host 'git TLS 后端：schannel（系统证书库）'
+}
+# (2) 残留 HTTP 代理：配置存在但端口无人监听时自动取消（否则报 Failed to connect to 127.0.0.1:xxxx）
+$proxyCfg = (git config --global --get http.proxy) 2>$null
+if ($proxyCfg) {
+  $port = 0
+  if ($proxyCfg -match ':(\d+)') { $port = [int]$Matches[1] }
+  $alive = $false
+  if ($port -gt 0) { $alive = [bool](Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) }
+  if (-not $alive) {
+    git config --global --unset http.proxy 2>$null
+    git config --global --unset https.proxy 2>$null
+    Write-Host "检测到 git 代理 $proxyCfg 不可用（端口无服务），已自动取消" -ForegroundColor Yellow
+  } else {
+    Write-Host "git 代理：$proxyCfg（端口可用，保留）"
+  }
+} else {
+  Write-Host 'git 代理：未配置（直连）'
+}
+# (3) 分支适配：远端默认分支可能是 main，而本地是 master
+$branch = (git rev-parse --abbrev-ref HEAD).Trim()
+$targetBranch = $branch
+$lsOut = (git ls-remote --heads origin main) 2>$null
+if ($lsOut -and $branch -ne 'main') { $targetBranch = 'main' }
+$ErrorActionPreference = $prevEap0
+Write-Host "本地分支：$branch　推送目标：origin/$targetBranch"
 
 # ---------- 1. 配置 remote 与 git 凭据 ----------
 Write-Step '配置远程仓库'
@@ -88,13 +126,25 @@ if ($SkipPush) {
   Write-Host "`n已跳过推送（-SkipPush）"
 } else {
   Write-Step '推送到 GitHub'
-  $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+  $refspec = "$branch`:$targetBranch"
   if ($DryRun) {
-    Write-Host "[DryRun] git push -u origin $branch"
+    Write-Host "[DryRun] git push -u origin $refspec"
   } else {
-    git push -u origin $branch
-    if ($LASTEXITCODE -ne 0) { throw 'git push 失败（请检查网络或凭据）' }
-    Write-Host "已推送分支：$branch"
+    $prevEap3 = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $pushArgs = @('push', '-u', 'origin', $refspec)
+    if ($Force) { $pushArgs += '--force' }
+    git @pushArgs
+    $pushCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap3
+    if ($pushCode -ne 0) {
+      Write-Host '推送失败。常见原因与处理：' -ForegroundColor Yellow
+      Write-Host '  · 历史不同源（远端为独立历史）→ 加 -Force 参数强制覆盖：tools\release.ps1 -Force'
+      Write-Host '  · SSL 证书错误 → 脚本已自动配置 schannel；若仍失败可设置代理后重试'
+      Write-Host '  · 代理端口不通 → 关闭代理软件或修改 git 的 http.proxy'
+      throw 'git push 失败'
+    }
+    Write-Host "已推送：$refspec"
   }
 }
 
