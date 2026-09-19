@@ -240,3 +240,33 @@ LLM 回复（含 <mood:happy>）→ 角色 + mood → emotions.json 里挑一条
 - 控制台「下载语音包」下载器（进度/校验/断点续传）
 - 分句流水线、试听页、爱芮/南宫语音包
 - 待主人提供 GPT-SoVITS 环境信息后：**针对 v2ProPlus 的参数适配**
+
+---
+
+## 10. 用户实测反馈修复（第二轮）
+
+| # | 问题 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | **括号里的动作描述被念出来** | 台词含 `（慌乱地鞠了个躬…）`，请求原样发送 | 主进程合成前**清洗舞台指示**：`（）()【】[]*…*` 全部剔除，只念真正台词 ✓（实测 `（…）你好！` → 只发 `你好！`） |
+| 2 | **本地推理音色不像云端 v2ProPlus 的效果** | v2ProPlus 的音色由**该角色训练权重**决定；我们的请求**没指定权重** → 服务用它**启动时加载的默认模型** → 音色跑偏 | **自动把语音包 `models/` 里的 `*.ckpt`+`*.pth` 随每次请求发送**（`gpt_path`/`sovits_path`，可用 `autoModelPath:false` 关闭）→ 服务端按请求用千夏权重 ✓；并新增 `[TTS] request` 完整请求日志便于核对 |
+| 3 | **控制台设置页内容显示不全（无滚动）** | `#view-settings` 缺少 `overflow-y:auto`（`#view-ai` 有） | 补上 CSS ✓ |
+| 4 | **「桌宠启动」模式应能"一键下载并自动集成"** | 原先只是"启动已有运行时" | 新增**一键下载器**：填 zip 地址 → **流式下载（进度条）→ PowerShell 解压 → 递归探测 `python.exe` 与 `api_v2.py`（4 层内）→ 自动写入配置（managed + 路径 + 启用）** ✓ |
+
+### 便携包打包指引（主人制作 zip 时）
+
+```
+便携包.zip
+  runtime/python.exe             <- 便携 Python（含依赖，如 torch）
+  runtime/Lib/site-packages/...  <- 依赖（CPU 约 0.8GB / GPU 约 2.5GB）
+  GPT_SoVITS/api_v2.py           <- 服务脚本（或精简后的 server.py）
+  GPT_SoVITS/pretrained_models/  <- 底座权重（BERT/HuBERT/pro 底模，约 1.9GB）
+  voices/qianxia/...             <- （可选）角色语音包
+```
+探测器会**递归查找** `python.exe` 与 `api_v2.py / server.py / api.py`，目录层级可自由调整 ✓
+
+### 音色问题的排查建议（若注入权重后仍不像）
+
+1. 看桌面宠日志的 `[TTS] request`：确认 `gpt_path` / `sovits_path` 是你训练的那两个文件；
+2. 看 **GPT-SoVITS 服务端启动日志**：它启动时加载的是哪套权重/底模（v2ProPlus 需要对应底模，如 `s2Gv2ProPlus`、`sv` 模型）；
+3. 用**同一条参考音频 + 同一句文本**分别在云端与本地合成，直接 A/B 对比；
+4. 若服务端**不支持** per-request 的 `gpt_path`/`sovits_path`（老版本会忽略或报错）→ 在「高级(JSON)」里把它放进 `extraBody` 或关掉 `autoModelPath`，改为在服务启动参数里指定权重。
