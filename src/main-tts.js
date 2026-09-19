@@ -37,7 +37,8 @@ const DEFAULT_CONFIG = {
   voicesDir: '',                  // 语音包目录（emotions.json + 参考音频）；留空则用默认位置
   downloadUrl: '',                // 便携包下载地址（「桌宠启动」模式的一键下载）
   autoModelPath: true,            // 自动随请求指定语音包里的模型权重（保证音色正确）
-  logRequests: true               // 打印合成请求（诊断音色/参数问题）
+  logRequests: true,              // 打印合成请求（诊断音色/参数问题）
+  saveByRole: false               // true=合成音频按角色分目录保存（文件名含情绪与台词片段，便于整理）
 };
 
 function createTtsManager(ctx) {
@@ -79,6 +80,8 @@ function createTtsManager(ctx) {
     if (process.env.QX_TTS_MODE) cfg.mode = process.env.QX_TTS_MODE;
     if (process.env.QX_TTS_DEVICE) cfg.device = process.env.QX_TTS_DEVICE;
     if (process.env.QX_TTS_VOICES) cfg.voicesDir = process.env.QX_TTS_VOICES;
+    if (process.env.QX_TTS_BYROLE === '1') cfg.saveByRole = true;
+    if (process.env.QX_TTS_BYROLE === '0') cfg.saveByRole = false;
   } catch (e) { /* noop */ }
 
   // ---------- 语音包（情绪映射）----------
@@ -182,6 +185,37 @@ function createTtsManager(ctx) {
       .trim();
   }
 
+  // ---------- 缓存路径（可选：按角色分目录 + 可读文件名）----------
+  function safeName(s, max) {
+    return String(s || '').replace(/[\\/:*?"<>|\r\n\t]+/g, '').replace(/\s+/g, '').slice(0, max || 12);
+  }
+  function cacheTarget(role, mood, text, key) {
+    if (!cfg.saveByRole) {
+      return { dir: cacheDir, file: pathMod.join(cacheDir, key + '.wav'), prefix: null };
+    }
+    const dir = pathMod.join(cacheDir, role);
+    try { fsMod.mkdirSync(dir, { recursive: true }); } catch (e) { /* noop */ }
+    const prefix = key.slice(0, 8) + '_';
+    return {
+      dir,
+      // 形如 qianxia/a1b2c3d4_happy_你好呀今天也要开心.wav —— 便于人工试听与整理
+      file: pathMod.join(dir, prefix + mood + '_' + (safeName(text, 12) || 'audio') + '.wav'),
+      prefix
+    };
+  }
+  function findCached(t) {
+    try {
+      if (!t.prefix) {
+        return (fsMod.existsSync(t.file) && fsMod.statSync(t.file).size > 512) ? t.file : null;
+      }
+      const files = fsMod.readdirSync(t.dir);
+      const hit = files.find((f) => f.startsWith(t.prefix) && /\.wav$/i.test(f));
+      if (!hit) return null;
+      const full = pathMod.join(t.dir, hit);
+      return (fsMod.statSync(full).size > 512) ? full : null;
+    } catch (e) { return null; }
+  }
+
   // ---------- 合成 ----------
   async function synthesize({ role, text, mood }) {
     if (!cfg.enabled) return { ok: false, error: 'disabled' };
@@ -192,9 +226,11 @@ function createTtsManager(ctx) {
 
     // 缓存命中
     const key = crypto.createHash('sha1').update([role, mood || 'neutral', clean, cfg.device].join('|')).digest('hex').slice(0, 20);
-    const cacheFile = pathMod.join(cacheDir, key + '.wav');
-    const asUrl = (p2) => 'pet://tts/' + pathMod.basename(p2);
-    try { if (fsMod.existsSync(cacheFile) && fsMod.statSync(cacheFile).size > 512) return { ok: true, file: cacheFile, url: asUrl(cacheFile), cached: true }; } catch (e) { /* noop */ }
+    const asUrl = (p2) => 'pet://tts/' + (cfg.saveByRole ? (role + '/') : '') + pathMod.basename(p2);
+    const target = cacheTarget(role, mood || 'neutral', clean, key);
+    const hit = findCached(target);
+    if (hit) return { ok: true, file: hit, url: asUrl(hit), cached: true };
+    const cacheFile = target.file;
 
     if (!(await probe())) {
       if (cfg.mode === 'managed') {
@@ -373,6 +409,9 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-emotions', (e, role) => loadEmotions(role));
     ipcMain.handle('tts-install', (e, url) => installFromUrl(url || cfg.downloadUrl || ''));
     ipcMain.handle('tts-install-state', () => installState);
+    ipcMain.handle('tts-open-cache', () => {
+      try { require('electron').shell.openPath(cacheDir); return { ok: true, dir: cacheDir }; } catch (e) { return { ok: false, error: e && e.message }; }
+    });
   }
 
   return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, installFromUrl, installState: () => installState };

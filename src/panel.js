@@ -92,6 +92,7 @@
     if (ttsEl('tts-on-chat')) ttsEl('tts-on-chat').checked = !!(c.speakOn && c.speakOn.chat);
     if (ttsEl('tts-on-bubble')) ttsEl('tts-on-bubble').checked = !!(c.speakOn && c.speakOn.bubble);
     if (ttsEl('tts-on-chatter')) ttsEl('tts-on-chatter').checked = !!(c.speakOn && c.speakOn.chatter);
+    if (ttsEl('tts-by-role')) ttsEl('tts-by-role').checked = c.saveByRole !== false && !!c.saveByRole;
     document.querySelectorAll('#tts-mode .tts-mode-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mode === (c.mode || 'external')));
     document.querySelectorAll('#tts-device .tts-device-btn').forEach((b) => b.classList.toggle('pink', b.dataset.device === (c.device || 'cuda')));
     // 按钮语义：external（已有服务）模式下"启动服务"无意义 → 禁用并给出提示（用户实测困惑点）
@@ -145,6 +146,7 @@
       serverScript: (ttsEl('tts-script') && ttsEl('tts-script').value.trim()) || '',
       downloadUrl: (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '',
       idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
+      saveByRole: !!(ttsEl('tts-by-role') && ttsEl('tts-by-role').checked),
       speakOn: {
         chat: !!(ttsEl('tts-on-chat') && ttsEl('tts-on-chat').checked),
         bubble: !!(ttsEl('tts-on-bubble') && ttsEl('tts-on-bubble').checked),
@@ -161,6 +163,7 @@
   if (ttsEl('tts-probe')) ttsEl('tts-probe').addEventListener('click', async () => { try { await dk.ttsProbe(); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-start')) ttsEl('tts-start').addEventListener('click', async () => { try { const r = await dk.ttsStart(); if (r && !r.ok) alert('启动失败：' + (r.error || '')); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-stop')) ttsEl('tts-stop').addEventListener('click', async () => { try { await dk.ttsStop(); } catch (e) { /* noop */ } refreshTts(); });
+  if (ttsEl('tts-open-cache')) ttsEl('tts-open-cache').addEventListener('click', async () => { try { await dk.ttsOpenCache(); } catch (e) { /* noop */ } });
   // 一键下载并自动集成（下载→解压→探测→写配置）
   function renderInstall(s) {
     if (!s) return;

@@ -371,6 +371,12 @@
           <div class="ai-row check"><label>聊天回复朗读</label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复自动转语音</span></div>
           <div class="ai-row check"><label>待机台词朗读</label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词（较频繁）</span></div>
           <div class="ai-row check"><label>互聊朗读</label><input type="checkbox" id="tts-on-chatter"></div>
+          <div class="ai-row check"><label>按角色分目录保存</label><input type="checkbox" id="tts-by-role">
+            <span class="ai-hint">开启后合成音频存到各角色专属文件夹（文件名含情绪+台词片段，便于整理试听）</span>
+          </div>
+          <div class="ai-btns" style="margin-top:4px;">
+            <button class="ai-btn small" id="tts-open-cache">📂 打开音频目录</button>
+          </div>
           <div class="ai-row" style="align-items:flex-start;"><label>高级(JSON)</label>
             <textarea id="tts-adv" style="flex:1;height:64px;font:11px monospace;" placeholder='{"apiPath":"/tts","params":{...},"extraBody":{...},"refFields":{"audio":"ref_audio_path","text":"prompt_text"}}'></textarea>
           </div>

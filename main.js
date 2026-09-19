@@ -811,10 +811,13 @@ app.whenReady().then(() => {
       try {
         const u = new URL(req.url);
         const rel = decodeURIComponent((u.hostname || '') + (u.pathname || '')).replace(/^\/+/, '');
-        // TTS 合成音频（userData/tts_cache/xxx.wav）→ renderer 用 <audio src="pet://tts/xxx.wav"> 播放
+        // TTS 合成音频（userData/tts_cache/[角色/]xxx.wav）→ <audio src="pet://tts/…">
         if (rel.startsWith('tts/')) {
-          const f2 = path.join(app.getPath('userData'), 'tts_cache', path.basename(rel));
-          if (fs.existsSync(f2)) return net.fetch(pathToFileURL(f2).toString());
+          const sub = rel.slice(4);
+          // 防目录穿越：只允许"角色名/文件名"或"文件名"两种形态
+          const safe = sub.split('/').filter((s) => s && s !== '.' && s !== '..').join(path.sep);
+          const f2 = path.join(app.getPath('userData'), 'tts_cache', safe);
+          try { if (fs.existsSync(f2) && fs.statSync(f2).isFile()) return net.fetch(pathToFileURL(f2).toString()); } catch (e) { /* noop */ }
           return new Response('', { status: 404 });
         }
         let abs = path.join(__dirname, 'assets', rel);

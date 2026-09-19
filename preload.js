@@ -157,6 +157,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   ttsInstall: (url) => ipcRenderer.invoke('tts-install', url),
   ttsInstallState: () => ipcRenderer.invoke('tts-install-state'),
   onTtsInstallProgress: (cb) => ipcRenderer.on('tts-install-progress', (e, s) => cb(s)),
+  ttsOpenCache: () => ipcRenderer.invoke('tts-open-cache'),
   minimizePanel: () => ipcRenderer.send('panel-minimize'),
   closePanel: () => ipcRenderer.send('panel-close'),
   setFocusable: (v) => ipcRenderer.send('set-focusable', !!v),
