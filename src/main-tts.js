@@ -34,7 +34,10 @@ const DEFAULT_CONFIG = {
   idleUnloadSec: 300,             // 空闲多久后停止 managed 服务（释放显存/内存）
   speakOn: { chat: true, bubble: false, chatter: false },   // 对哪些内容说话
   volume: 100,
-  voicesDir: ''                   // 语音包目录（emotions.json + 参考音频）；留空则用默认位置
+  voicesDir: '',                  // 语音包目录（emotions.json + 参考音频）；留空则用默认位置
+  downloadUrl: '',                // 便携包下载地址（「桌宠启动」模式的一键下载）
+  autoModelPath: true,            // 自动随请求指定语音包里的模型权重（保证音色正确）
+  logRequests: true               // 打印合成请求（诊断音色/参数问题）
 };
 
 function createTtsManager(ctx) {
@@ -166,11 +169,24 @@ function createTtsManager(ctx) {
     }, 30000);
   }
 
+  // 文本清洗：去掉"（动作描述）/(动作)/【旁白】/*动作*"等舞台指示——只朗读真正的台词
+  // （用户实测：聊天台词里的括号动作被一起念出来了）
+  function stripActionText(text) {
+    return String(text || '')
+      .replace(/（[^）]*）/g, '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/【[^】]*】/g, '')
+      .replace(/\[[^\]]*\]/g, '')
+      .replace(/\*[^*]*\*/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   // ---------- 合成 ----------
   async function synthesize({ role, text, mood }) {
     if (!cfg.enabled) return { ok: false, error: 'disabled' };
-    const clean = String(text || '').trim();
-    if (!clean) return { ok: false, error: 'empty text' };
+    const clean = stripActionText(text);
+    if (!clean) return { ok: false, error: 'empty text (after strip)' };
     const ref = pickReference(role, mood || 'neutral');
     if (!ref) return { ok: false, error: 'no voice pack (emotions.json) for ' + role };
 
@@ -183,10 +199,16 @@ function createTtsManager(ctx) {
     if (!(await probe())) {
       if (cfg.mode === 'managed') {
         const s = startService();
-        if (!s.ok) return { ok: false, error: s.error };
+        if (!s.ok) {
+          // 友好提示：区分"便携包还没下载/未配置"与"启动失败"
+          const tip = (!cfg.runtimePath || !cfg.serverScript)
+            ? '未安装便携包：请在「桌宠启动」模式点「⬇ 一键下载并自动集成」，或切到「已有服务」并先启动 GPT-SoVITS'
+            : ('服务启动失败：' + (s.error || ''));
+          return { ok: false, error: tip };
+        }
         for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 500)); if (await probe()) break; }
       }
-      if (!lastStatus.running) return { ok: false, error: lastStatus.lastError || 'service not running' };
+      if (!lastStatus.running) return { ok: false, error: lastStatus.lastError ? ('服务不可用：' + lastStatus.lastError) : '服务不可用（未启动或端口不对）' };
     }
 
     // 组装请求（模板化，适配不同版本）
@@ -194,11 +216,34 @@ function createTtsManager(ctx) {
     body.text = clean;
     body[cfg.refFields.audio] = ref.audio;
     body[cfg.refFields.text] = ref.text;
+    // ★ 音色正确性的关键：v2ProPlus 等版本必须用**该角色的训练权重**推理。
+    //   若语音包里带了 models/（*.ckpt + *.pth），自动随请求指定 gpt_path / sovits_path，
+    //   避免"本地服务默认加载了别的模型 → 音色不像"（用户实测问题）。
+    if (cfg.autoModelPath !== false) {
+      try {
+        const mdir = pathMod.join(voicesRoot(), role, 'models');
+        if (fsMod.existsSync(mdir)) {
+          const files = fsMod.readdirSync(mdir);
+          const gptFile = files.find((f) => /\.ckpt$/i.test(f));
+          const sovFile = files.find((f) => /\.pth$/i.test(f));
+          if (gptFile && !body.gpt_path) body.gpt_path = pathMod.join(mdir, gptFile);
+          if (sovFile && !body.sovits_path) body.sovits_path = pathMod.join(mdir, sovFile);
+        }
+      } catch (e) { /* noop */ }
+    }
     let pathName = cfg.apiPath || '/tts';
     if (cfg.refMode === 'query') {
       const q = new URLSearchParams();
       for (const [k, v] of Object.entries(body)) q.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
       pathName += '?' + q.toString();
+    }
+    if (cfg.logRequests !== false) {
+      console.log('[TTS] request →', pathName, JSON.stringify({
+        text: body.text, ref: pathMod.basename(body[cfg.refFields.audio] || ''),
+        prompt: body[cfg.refFields.text], gpt_path: body.gpt_path ? pathMod.basename(body.gpt_path) : undefined,
+        sovits_path: body.sovits_path ? pathMod.basename(body.sovits_path) : undefined,
+        device: cfg.device, mood: mood || 'neutral'
+      }));
     }
     const r = await httpJsonOnce({ method: 'POST', host: cfg.host, port: cfg.port, pathName, timeoutMs: 120000, body: cfg.refMode === 'query' ? undefined : body });
     touchIdle();
@@ -230,6 +275,93 @@ function createTtsManager(ctx) {
     };
   }
 
+  // ---------- 一键下载并自动集成（便携运行时 / 语音包）----------
+  // 用户点一下：下载 → 解压 → 自动探测 python 与 api_v2.py → 写配置 → 可直接用
+  let installState = { phase: 'idle', got: 0, total: 0, message: '' };
+  function setInstall(patch) {
+    installState = Object.assign({}, installState, patch, { at: Date.now() });
+    try {
+      const w = getWin && getWin();
+      if (w && !w.isDestroyed() && w.webContents) w.webContents.send('tts-install-progress', installState);
+    } catch (e) { /* noop */ }
+  }
+  function downloadTo(url, dest, onProgress) {
+    return new Promise((resolve, reject) => {
+      const isHttps = /^https:/i.test(url);
+      const mod = isHttps ? require('https') : require('http');
+      const file = fsMod.createWriteStream(dest);
+      const req = mod.get(url, { timeout: 60000 }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          file.close();
+          return downloadTo(res.headers.location, dest, onProgress).then(resolve, reject);
+        }
+        if (res.statusCode !== 200) { file.close(); return reject(new Error('HTTP ' + res.statusCode)); }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let got = 0;
+        res.on('data', (d) => { got += d.length; if (onProgress) onProgress(got, total); });
+        res.on('error', reject);
+        res.pipe(file);
+        file.on('finish', () => file.close(() => resolve({ bytes: got })));
+      });
+      req.on('timeout', () => { req.destroy(); reject(new Error('download timeout')); });
+      req.on('error', reject);
+    });
+  }
+  function expandArchive(zipPath, outDir) {
+    return new Promise((resolve, reject) => {
+      const { execFile } = require('child_process');
+      const esc = (s) => String(s).replace(/'/g, "''");
+      const cmd = "Expand-Archive -LiteralPath '" + esc(zipPath) + "' -DestinationPath '" + esc(outDir) + "' -Force";
+      execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd],
+        { timeout: 1800000, windowsHide: true }, (err, so, se) => err ? reject(new Error(String(se || err.message).slice(0, 300))) : resolve());
+    });
+  }
+  // 递归探测：python.exe 与服务脚本（api_v2.py / api.py / server.py）
+  function detectRuntime(root) {
+    const found = { python: '', script: '' };
+    const walk = (dir, depth) => {
+      if (depth > 4 || (found.python && found.script)) return;
+      let items = [];
+      try { items = fsMod.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const it of items) {
+        const full = pathMod.join(dir, it.name);
+        if (it.isDirectory()) { walk(full, depth + 1); continue; }
+        const n = it.name.toLowerCase();
+        if (!found.python && n === 'python.exe') found.python = full;
+        if (!found.script && (n === 'api_v2.py' || n === 'server.py' || n === 'api.py')) found.script = full;
+      }
+    };
+    walk(root, 0);
+    return found;
+  }
+  async function installFromUrl(url) {
+    if (!url) return { ok: false, error: '未提供下载地址' };
+    const root = pathMod.join(userData, 'tts');
+    const zipPath = pathMod.join(root, '_download.zip');
+    try { fsMod.mkdirSync(root, { recursive: true }); } catch (e) { /* noop */ }
+    try {
+      setInstall({ phase: 'download', got: 0, total: 0, message: '开始下载…' });
+      const r = await downloadTo(url, zipPath, (got, total) => {
+        setInstall({ phase: 'download', got, total, message: '下载中 ' + (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB') });
+      });
+      setInstall({ phase: 'extract', got: r.bytes, total: r.bytes, message: '下载完成，正在解压…' });
+      await expandArchive(zipPath, root);
+      setInstall({ phase: 'detect', message: '解压完成，正在探测运行时…' });
+      const det = detectRuntime(root);
+      if (!det.python || !det.script) {
+        setInstall({ phase: 'error', message: '未找到 python.exe 或 api_v2.py（请确认压缩包结构）' });
+        return { ok: false, error: '未找到运行时/脚本', detected: det };
+      }
+      save({ mode: 'managed', runtimePath: det.python, serverScript: det.script, enabled: true });
+      setInstall({ phase: 'done', message: '安装完成，可直接使用' });
+      try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
+      return { ok: true, runtimePath: det.python, serverScript: det.script };
+    } catch (e) {
+      setInstall({ phase: 'error', message: String(e && e.message).slice(0, 200) });
+      return { ok: false, error: String(e && e.message) };
+    }
+  }
+
   // ---------- IPC ----------
   function register() {
     ipcMain.handle('tts-status', () => status());
@@ -239,9 +371,11 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-stop', () => stopService('manual'));
     ipcMain.handle('tts-speak', (e, payload) => synthesize(payload || {}));
     ipcMain.handle('tts-emotions', (e, role) => loadEmotions(role));
+    ipcMain.handle('tts-install', (e, url) => installFromUrl(url || cfg.downloadUrl || ''));
+    ipcMain.handle('tts-install-state', () => installState);
   }
 
-  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot };
+  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, installFromUrl, installState: () => installState };
 }
 
 module.exports = { createTtsManager, DEFAULT_CONFIG };

@@ -87,6 +87,7 @@
     if (ttsEl('tts-port')) ttsEl('tts-port').value = c.port || 9880;
     if (ttsEl('tts-runtime')) ttsEl('tts-runtime').value = c.runtimePath || '';
     if (ttsEl('tts-script')) ttsEl('tts-script').value = c.serverScript || '';
+    if (ttsEl('tts-download-url')) ttsEl('tts-download-url').value = c.downloadUrl || '';
     if (ttsEl('tts-idle')) ttsEl('tts-idle').value = c.idleUnloadSec || 300;
     if (ttsEl('tts-on-chat')) ttsEl('tts-on-chat').checked = !!(c.speakOn && c.speakOn.chat);
     if (ttsEl('tts-on-bubble')) ttsEl('tts-on-bubble').checked = !!(c.speakOn && c.speakOn.bubble);
@@ -142,6 +143,7 @@
       port: parseInt(ttsEl('tts-port') && ttsEl('tts-port').value, 10) || 9880,
       runtimePath: (ttsEl('tts-runtime') && ttsEl('tts-runtime').value.trim()) || '',
       serverScript: (ttsEl('tts-script') && ttsEl('tts-script').value.trim()) || '',
+      downloadUrl: (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '',
       idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
       speakOn: {
         chat: !!(ttsEl('tts-on-chat') && ttsEl('tts-on-chat').checked),
@@ -159,6 +161,26 @@
   if (ttsEl('tts-probe')) ttsEl('tts-probe').addEventListener('click', async () => { try { await dk.ttsProbe(); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-start')) ttsEl('tts-start').addEventListener('click', async () => { try { const r = await dk.ttsStart(); if (r && !r.ok) alert('启动失败：' + (r.error || '')); } catch (e) { /* noop */ } refreshTts(); });
   if (ttsEl('tts-stop')) ttsEl('tts-stop').addEventListener('click', async () => { try { await dk.ttsStop(); } catch (e) { /* noop */ } refreshTts(); });
+  // 一键下载并自动集成（下载→解压→探测→写配置）
+  function renderInstall(s) {
+    if (!s) return;
+    const bar = ttsEl('tts-install-bar');
+    const msg = ttsEl('tts-install-msg');
+    if (bar) bar.style.width = (s.total ? Math.min(100, Math.round((s.got / s.total) * 100)) : (s.phase === 'done' ? 100 : 0)) + '%';
+    if (msg) msg.textContent = ({ idle: '下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用', download: '下载中…', extract: '解压中…', detect: '探测运行时…', done: '✅ 安装完成，可直接使用', error: '❌ ' + (s.message || '失败') }[s.phase] || s.message || '') + (s.phase === 'download' && s.message ? '（' + s.message + '）' : '');
+  }
+  try { dk.onTtsInstallProgress(renderInstall); } catch (e) { /* noop */ }
+  (async () => { try { renderInstall(await dk.ttsInstallState()); } catch (e) { /* noop */ } })();
+  if (ttsEl('tts-install')) ttsEl('tts-install').addEventListener('click', async () => {
+    const url = (ttsEl('tts-download-url') && ttsEl('tts-download-url').value.trim()) || '';
+    if (!url) { alert('请先填入便携包下载地址（zip）'); return; }
+    try {
+      await dk.ttsConfig({ downloadUrl: url });             // 先保存地址
+      const r = await dk.ttsInstall(url);
+      if (r && !r.ok) alert('安装失败：' + (r.error || ''));
+    } catch (e) { alert('安装异常：' + (e && e.message)); }
+    refreshTts();
+  });
 
   // ================= 设置页：多显示器（运行屏幕） =================
   const screenBtns = Array.from(document.querySelectorAll('#set-screen-modes .screen-mode'));

@@ -157,6 +157,7 @@
 
   /* ============ 对话配置视图 ============ */
   #view-ai { overflow-y: auto; padding: 16px 22px 12px; }
+  #view-settings { overflow-y: auto; padding: 16px 22px 12px; }
   .ai-card {
     background: #fff; border: 3px solid #3f3140; border-radius: 18px;
     padding: 16px 20px; margin-bottom: 14px;
@@ -358,6 +359,14 @@
           <div class="ai-row"><label>服务地址</label><input type="text" id="tts-host" style="width:110px;"><input type="text" id="tts-port" style="width:70px;margin-left:6px;"></div>
           <div class="ai-row"><label>运行时</label><input type="text" id="tts-runtime" placeholder="便携包里的 python.exe（桌宠启动模式）" style="flex:1;"></div>
           <div class="ai-row"><label>服务脚本</label><input type="text" id="tts-script" placeholder="服务脚本路径（桌宠启动模式）" style="flex:1;"></div>
+          <div class="ai-row"><label>一键下载</label><input type="text" id="tts-download-url" placeholder="便携包下载地址（zip：含 runtime/python.exe 与 api_v2.py）" style="flex:1;"></div>
+          <div class="ai-btns" style="margin-top:6px;">
+            <button class="ai-btn pink small" id="tts-install">⬇ 一键下载并自动集成</button>
+            <span class="ai-hint" id="tts-install-msg">下载→解压→自动探测 Python 与服务脚本→写入配置，完成后即可用</span>
+          </div>
+          <div style="height:6px;background:#efe3ea;border-radius:4px;overflow:hidden;margin-top:6px;">
+            <div id="tts-install-bar" style="height:100%;width:0%;background:#e0559a;transition:width .2s;"></div>
+          </div>
           <div class="ai-row"><label>空闲卸载</label><input type="text" id="tts-idle" style="width:70px;"><span class="ai-hint">秒（无请求后释放显存/内存）</span></div>
           <div class="ai-row check"><label>聊天回复朗读</label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复自动转语音</span></div>
           <div class="ai-row check"><label>待机台词朗读</label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词（较频繁）</span></div>
