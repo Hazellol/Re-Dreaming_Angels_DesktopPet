@@ -52,9 +52,12 @@ start-dreaming-angels.cmd   :: 等价命令行入口
 ### 打包分发
 
 ```bat
-npm run pack:portable      :: 生成 dist/妄想天使桌宠-便携版.exe（单文件，双击即用）
-npm run pack:installer     :: 生成 dist/妄想天使桌宠-安装版-Setup-x.x.x.exe（NSIS 安装程序）
+npm run pack:portable      :: 生成 dist/ReDreamingAngels-Portable-x.x.x.exe（单文件，双击即用）
+npm run pack:installer     :: 生成 dist/ReDreamingAngels-Setup-x.x.x.exe（NSIS 安装程序）
 ```
+
+> 打包产物使用 ASCII 文件名：部分平台（GitHub Releases、镜像站、下载器）对中文附件名支持不佳。
+> 程序内的产品名、快捷方式名仍为「妄想天使桌宠」。
 
 - 打包内容：`main.js` / `preload.js` / `src/` / `assets/`，并合并为 asar
 - 打包版本的运行数据写入 `%APPDATA%\ReDreamingAngels\`（不写入安装目录）

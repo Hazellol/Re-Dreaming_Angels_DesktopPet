@@ -206,13 +206,25 @@ $exes = @(Get-ChildItem (Join-Path $projRoot 'dist') -Filter '*.exe' -ErrorActio
 if ($exes.Count -gt 0) {
   Write-Step "上传安装包到 Release（$($exes.Count) 个）"
   foreach ($e in $exes) {
-    Write-Host ("  上传 " + $e.Name + "（" + [math]::Round($e.Length/1MB,1) + " MB）…")
+    # 资产文件名必须是 ASCII：gh / 镜像站 / 部分下载器对中文附件名支持不佳
+    # （实测中文名上传后变成 "-.-1.1.1.exe"），必要时复制为 ASCII 名再上传
+    $safeName = ($e.Name -replace '[^\x20-\x7E]', '')
+    $uploadPath = $e.FullName
+    $tmpCopy = $null
+    if ($safeName -ne $e.Name) {
+      $tmpCopy = Join-Path $env:TEMP $safeName
+      Copy-Item $e.FullName $tmpCopy -Force
+      $uploadPath = $tmpCopy
+      Write-Host ("  文件名含非 ASCII 字符 → 以 " + $safeName + " 上传")
+    }
+    Write-Host ("  上传 " + $safeName + "（" + [math]::Round($e.Length/1MB,1) + " MB）…")
     $prevEap9 = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    & $gh release upload $tag $e.FullName --repo $Repo --clobber
+    & $gh release upload $tag $uploadPath --repo $Repo --clobber
     $upCode = $LASTEXITCODE
     $ErrorActionPreference = $prevEap9
-    if ($upCode -ne 0) { Write-Host "  上传失败：$($e.Name)" -ForegroundColor Yellow } else { Write-Host "  已上传：$($e.Name)" -ForegroundColor Green }
+    if ($tmpCopy) { Remove-Item $tmpCopy -Force -ErrorAction SilentlyContinue }
+    if ($upCode -ne 0) { Write-Host "  上传失败：$safeName" -ForegroundColor Yellow } else { Write-Host "  已上传：$safeName" -ForegroundColor Green }
   }
 } else {
   Write-Host "`n（未发现 dist\*.exe，跳过安装包上传；如需打包请加 -Build 参数）"

@@ -47,7 +47,7 @@
       ]
     },
     "portable": {
-      "artifactName": "妄想天使桌宠-便携版-${version}.exe"
+      "artifactName": "ReDreamingAngels-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -55,7 +55,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "妄想天使桌宠",
-      "artifactName": "妄想天使桌宠-安装版-Setup-${version}.exe"
+      "artifactName": "ReDreamingAngels-Setup-${version}.exe"
     },
     "asarUnpack": [
       "**/node_modules/koffi/**"
