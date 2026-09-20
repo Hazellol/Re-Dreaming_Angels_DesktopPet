@@ -458,9 +458,20 @@ function createTtsManager(ctx) {
       return voicesCandidates().some((c) => fsMod.existsSync(pathMod.join(c, role, 'emotions.json')));
     } catch (e) { return false; }
   }
-  // 下载进度：附加"速度/剩余时间"（每卷重新采样）
+  // 下载进度：附加"速度/剩余时间"（每卷重新采样），并**实时写入后台日志**便于观察
   let dlSample = { t: 0, got: 0 };
+  function fmtSpeed(bps) {
+    if (!bps || bps <= 0) return '';
+    return bps >= 1048576 ? (bps / 1048576).toFixed(1) + ' MB/s' : Math.round(bps / 1024) + ' KB/s';
+  }
+  function fmtEta(sec) {
+    if (!sec || sec <= 0) return '';
+    sec = Math.round(sec);
+    return sec >= 60 ? (Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒') : (sec + ' 秒');
+  }
   function progressReporter(tag, part, parts) {
+    let lastLogAt = 0;
+    let lastPct = -1;
     return (got, total) => {
       const now = Date.now();
       let speed = 0, eta = 0;
@@ -474,7 +485,22 @@ function createTtsManager(ctx) {
         speed: Math.round(speed), eta: Math.round(eta),
         message: (total ? Math.round((got / total) * 100) + '%' : Math.round(got / 1048576) + 'MB')
       });
-      if (total > 0 && got >= total) logLine('INFO', tag + '下载完成 ' + (total / 1048576).toFixed(0) + 'MB');
+      // 实时日志（节流：间隔 ≥2 秒且百分比有变化）—— 控制台「后台日志」面板会自动刷新显示
+      const pct = total > 0 ? Math.floor((got / total) * 100) : -1;
+      if (now - lastLogAt >= 2000 && pct !== lastPct) {
+        lastLogAt = now;
+        lastPct = pct;
+        const size = total > 0
+          ? ((got / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB')
+          : ((got / 1048576).toFixed(1) + ' MB');
+        logLine('INFO', tag + '下载中 ' + (pct >= 0 ? pct + '%　' : '') + size
+          + (speed > 0 ? '　' + fmtSpeed(speed) : '')
+          + (eta > 0 ? '　剩余 ' + fmtEta(eta) : ''));
+      }
+      if (total > 0 && got >= total) {
+        logLine('INFO', tag + '下载完成：' + (total / 1048576).toFixed(1) + ' MB'
+          + (speed > 0 ? '，平均速度 ' + fmtSpeed(speed) : ''));
+      }
     };
   }
 
@@ -610,7 +636,10 @@ function createTtsManager(ctx) {
       logLine('INFO', '语音包[' + role + '] 下载：' + url);
       const r = await downloadTo(url, zipPath, progressReporter('语音包[' + role + '] ', 1, 1));
       setInstall({ phase: 'extract', got: r.bytes, total: r.bytes, message: '语音包[' + role + '] 解压中…' });
+      logLine('INFO', '语音包[' + role + '] 解压中…（' + (r.bytes / 1048576).toFixed(1) + ' MB）');
+      const tExt = Date.now();
       await expandArchive(zipPath, root);
+      logLine('INFO', '语音包[' + role + '] 解压完成，用时 ' + ((Date.now() - tExt) / 1000).toFixed(1) + ' 秒');
       try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
       logLine('INFO', '语音包[' + role + '] 安装完成');
       setInstall({ phase: 'done', message: '语音包[' + role + '] 安装完成' });
@@ -651,8 +680,10 @@ function createTtsManager(ctx) {
         logLine('INFO', tag + '下载：' + urls[i]);
         const r = await downloadTo(urls[i], zipPath, progressReporter(tag, i + 1, urls.length));
         setInstall({ phase: 'extract', part: i + 1, parts: urls.length, got: r.bytes, total: r.bytes, message: tag + '解压中…' });
-        logLine('INFO', tag + '解压中…');
+        logLine('INFO', tag + '解压中…（' + (r.bytes / 1048576).toFixed(1) + ' MB）');
+        const tExt = Date.now();
         await expandArchive(zipPath, root);
+        logLine('INFO', tag + '解压完成，用时 ' + ((Date.now() - tExt) / 1000).toFixed(1) + ' 秒');
         try { fsMod.unlinkSync(zipPath); } catch (e) { /* noop */ }
       }
       setInstall({ phase: 'detect', message: '全部解压完成，正在探测运行时…' });
