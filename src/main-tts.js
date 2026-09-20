@@ -754,6 +754,46 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-open-data', () => {
       try { require('electron').shell.openPath(dataRoot()); return { ok: true, dir: dataRoot() }; } catch (err) { return { ok: false, error: err && err.message }; }
     });
+    // 选择自定义目录/文件（kind: runtime=推理环境目录 | script=服务脚本 | voices=语音包目录）
+    ipcMain.handle('tts-pick', async (e, kind) => {
+      try {
+        const { dialog } = require('electron');
+        const w = getWin && getWin();
+        const isFile = (kind === 'script');
+        const res = await dialog.showOpenDialog(w && !w.isDestroyed() ? w : undefined, {
+          title: kind === 'runtime' ? '选择推理环境目录（含 python.exe 与 api_v2.py）'
+            : kind === 'script' ? '选择服务脚本（api_v2.py）'
+            : '选择语音包目录（含 <角色>/emotions.json）',
+          properties: isFile ? ['openFile'] : ['openDirectory'],
+          filters: isFile ? [{ name: 'Python 脚本', extensions: ['py'] }] : undefined
+        });
+        if (res.canceled || !res.filePaths || !res.filePaths.length) return { ok: false, canceled: true };
+        const picked = res.filePaths[0];
+        if (kind === 'voices') {
+          const has = ROLE_KEYS.some((r) => fsMod.existsSync(pathMod.join(picked, r, 'emotions.json')));
+          save({ voicesDir: picked });
+          logLine('INFO', '语音包目录已设为：' + picked + (has ? '（检测到情绪映射）' : '（未检测到 emotions.json，仍已保存）'));
+          return { ok: true, dir: picked, detected: has, status: status() };
+        }
+        if (kind === 'script') {
+          save({ serverScript: picked, mode: 'managed' });
+          logLine('INFO', '服务脚本已设为：' + picked);
+          return { ok: true, file: picked, status: status() };
+        }
+        // runtime：选目录 → 自动探测 python.exe 与 api_v2.py
+        const det = detectRuntime(picked);
+        const patch = { mode: 'managed' };
+        if (det.python) patch.runtimePath = det.python;
+        if (det.script) patch.serverScript = det.script;
+        if (!det.python && !det.script) {
+          logLine('WARN', '所选目录未找到 python.exe 或 api_v2.py：' + picked);
+          return { ok: false, error: '该目录下未找到 python.exe 或 api_v2.py', dir: picked };
+        }
+        save(patch);
+        logLine('INFO', '推理环境已指向：' + (det.python || '(未找到 python)') + ' / ' + (det.script || '(未找到脚本)'));
+        return { ok: true, dir: picked, runtimePath: det.python, serverScript: det.script, status: status() };
+      } catch (err) { return { ok: false, error: err && err.message }; }
+    });
     ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
     ipcMain.handle('tts-check-update', () => checkUpdate());
     ipcMain.handle('open-external', (e, url) => { try { require('electron').shell.openExternal(String(url || '')); return { ok: true }; } catch (err) { return { ok: false, error: err && err.message }; } });

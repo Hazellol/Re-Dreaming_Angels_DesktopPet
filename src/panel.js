@@ -93,6 +93,7 @@
 
   // ================= 设置页：语音（TTS） =================
   const ttsEl = (id) => document.getElementById(id);
+  const ROLE_LIST = ['airui', 'qianxia', 'nangong'];
   let lastTtsStatus = null;   // 最近一次状态（用于"是否已安装"等交互判断）
   function renderTts(s) {
     if (!s) return;
@@ -128,6 +129,18 @@
     document.querySelectorAll('#tts-mirror .tts-mirror-btn').forEach((b) => b.classList.toggle('pink', b.dataset.mirror === (c.mirror || 'official')));
     if (ttsEl('tts-repo')) ttsEl('tts-repo').value = c.repoUrl || '';
     if (ttsEl('tts-mirror-custom')) ttsEl('tts-mirror-custom').value = c.mirrorCustom || '';
+    if (ttsEl('tts-voices-dir')) ttsEl('tts-voices-dir').value = c.voicesDir || '';
+    // 检测位置说明（让用户清楚程序实际在查哪里）
+    const dh = ttsEl('tts-detect-hint');
+    if (dh) {
+      const nameMap = { airui: '爱芮', qianxia: '千夏', nangong: '南宫羽' };
+      const vState = ROLE_LIST.map((r) => nameMap[r] + (ins.voices && ins.voices[r] ? '✓' : '✗')).join('　');
+      dh.textContent = '推理环境：' + (ins.runtime ? '已安装 ✓' : '未安装 ✗')
+        + '　语音包：' + vState
+        + '\n数据目录：' + (s.dataRoot || '')
+        + (c.voicesDir ? '\n语音包目录（自定义）：' + c.voicesDir : '');
+      dh.style.whiteSpace = 'pre-wrap';
+    }
     // 按钮状态联动：运行中/启动中 → 只能"停止"；未运行 → 只能"启动"
     const startBtn = ttsEl('tts-start');
     const stopBtn = ttsEl('tts-stop');
@@ -193,6 +206,7 @@
       repoUrl: (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '',
       mirror: mirrorBtn ? mirrorBtn.dataset.mirror : 'official',
       mirrorCustom: (ttsEl('tts-mirror-custom') && ttsEl('tts-mirror-custom').value.trim()) || '',
+      voicesDir: (ttsEl('tts-voices-dir') && ttsEl('tts-voices-dir').value.trim()) || '',
       runtimePath: (ttsEl('tts-runtime') && ttsEl('tts-runtime').value.trim()) || '',
       serverScript: (ttsEl('tts-script') && ttsEl('tts-script').value.trim()) || '',
       idleUnloadSec: parseInt(ttsEl('tts-idle') && ttsEl('tts-idle').value, 10) || 300,
@@ -311,6 +325,25 @@
   });
   if (ttsEl('tts-open-logs')) ttsEl('tts-open-logs').addEventListener('click', async () => { try { await dk.ttsOpenLogs(); } catch (e) { /* noop */ } });
   if (ttsEl('tts-open-data')) ttsEl('tts-open-data').addEventListener('click', async () => { try { await dk.ttsOpenData(); } catch (e) { /* noop */ } });
+  // 自定义目录选择（浏览）：runtime=推理环境目录 | script=服务脚本 | voices=语音包目录
+  async function pickPath(kind) {
+    try {
+      const r = await dk.ttsPick(kind);
+      if (!r || r.canceled) return;
+      if (!r.ok) { alert('未检测到有效内容：' + (r.error || '') + '\n\n请确认所选目录包含 python.exe 与 api_v2.py'); return; }
+      if (kind === 'runtime') {
+        alert('已识别并保存：\n\n运行时：' + (r.runtimePath || '(未找到 python.exe)') + '\n服务脚本：' + (r.serverScript || '(未找到 api_v2.py)'));
+      } else if (kind === 'script') {
+        alert('服务脚本已设置为：\n' + r.file);
+      } else if (kind === 'voices') {
+        alert(r.detected ? '语音包目录已设置（检测到情绪映射）✓' : '目录已保存，但未在其中检测到 <角色>/emotions.json');
+      }
+      refreshTts();
+    } catch (e) { alert('操作失败：' + (e && e.message)); }
+  }
+  if (ttsEl('tts-pick-runtime')) ttsEl('tts-pick-runtime').addEventListener('click', () => pickPath('runtime'));
+  if (ttsEl('tts-pick-script')) ttsEl('tts-pick-script').addEventListener('click', () => pickPath('script'));
+  if (ttsEl('tts-pick-voices')) ttsEl('tts-pick-voices').addEventListener('click', () => pickPath('voices'));
   // 语音包（按需下载单只；已安装会先确认再覆盖）
   document.querySelectorAll('.tts-voice-btn').forEach((b) => b.addEventListener('click', async () => {
     const repo = (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '';
