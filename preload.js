@@ -159,6 +159,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   ttsInstallVoice: (role, opts) => ipcRenderer.invoke('tts-install-voice', role, opts),
   ttsGetLogs: (lines) => ipcRenderer.invoke('tts-get-logs', lines),
   ttsOpenLogs: () => ipcRenderer.invoke('tts-open-logs'),
+  ttsOpenData: () => ipcRenderer.invoke('tts-open-data'),
   ttsUrls: () => ipcRenderer.invoke('tts-urls'),
   ttsCheckUpdate: () => ipcRenderer.invoke('tts-check-update'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

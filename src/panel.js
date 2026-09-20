@@ -310,6 +310,7 @@
     else if (logTimer) { clearInterval(logTimer); logTimer = null; }
   });
   if (ttsEl('tts-open-logs')) ttsEl('tts-open-logs').addEventListener('click', async () => { try { await dk.ttsOpenLogs(); } catch (e) { /* noop */ } });
+  if (ttsEl('tts-open-data')) ttsEl('tts-open-data').addEventListener('click', async () => { try { await dk.ttsOpenData(); } catch (e) { /* noop */ } });
   // 语音包（按需下载单只；已安装会先确认再覆盖）
   document.querySelectorAll('.tts-voice-btn').forEach((b) => b.addEventListener('click', async () => {
     const repo = (ttsEl('tts-repo') && ttsEl('tts-repo').value.trim()) || '';

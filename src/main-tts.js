@@ -55,12 +55,22 @@ function createTtsManager(ctx) {
   const fsMod = f || fs;
 
   const userData = app.getPath('userData');
-  // ===== 数据根目录：**优先项目内**（用户要求"所有功能数据都在项目文件夹里"）=====
-  // 项目目录可写 → 用 <项目>/tts；打包版/只读环境（Program Files、asar）→ 回退 userData/tts
+  // ===== 数据根目录（确定性规则）=====
+  //   · 源码运行（npm start / 一键启动 vbs）→ <项目>/tts          —— 便于查看与管理
+  //   · 打包版（便携版/安装版）           → %APPDATA%/<产品名>/tts —— 项目目录在 asar 内只读
+  // 不使用 process.cwd()：便携版双击时工作目录不可控（可能是 exe 目录、桌面或 System32），
+  // 会导致"已安装却检测不到"以及数据位置漂移。
   let dataRootCache = null;
   function dataRoot() {
     if (dataRootCache) return dataRootCache;
-    const cands = [pathMod.join(__dirname, '..', 'tts'), pathMod.join(process.cwd(), 'tts')];
+    const userDir = pathMod.join(userData, 'tts');
+    if (app.isPackaged) {                    // 打包版：固定用户数据目录
+      try { fsMod.mkdirSync(userDir, { recursive: true }); } catch (e) { /* noop */ }
+      dataRootCache = userDir;
+      return dataRootCache;
+    }
+    const projDir = pathMod.join(__dirname, '..', 'tts');   // 源码版：项目目录
+    const cands = [projDir];
     for (const c of cands) {
       try {
         fsMod.mkdirSync(c, { recursive: true });
@@ -71,10 +81,10 @@ function createTtsManager(ctx) {
         return c;
       } catch (e) { /* 试下一个 */ }
     }
-    dataRootCache = pathMod.join(userData, 'tts');
+    dataRootCache = userDir;
     return dataRootCache;
   }
-  const legacyTtsDir = pathMod.join(userData, 'tts');   // 旧位置（兼容读取/迁移来源）
+  const legacyTtsDir = pathMod.join(userData, 'tts');   // 打包版数据目录（同时作为源码版的历史兼容位置）
   function cfgFile() { return pathMod.join(dataRoot(), 'tts_config.json'); }
   function cacheDirPath() { return pathMod.join(dataRoot(), 'cache'); }
   // ===== 后台日志（<数据根>/logs/app.log，1MB 轮转；控制台可查看）=====
@@ -160,8 +170,8 @@ function createTtsManager(ctx) {
     const list = [];
     if (cfg.voicesDir) list.push(cfg.voicesDir);
     list.push(pathMod.join(dataRoot(), 'voices'));
-    list.push(pathMod.join(legacyTtsDir, 'voices'));
-    list.push(pathMod.join(__dirname, '..', 'tts_out'));
+    if (legacyTtsDir !== dataRoot()) list.push(pathMod.join(legacyTtsDir, 'voices'));
+    if (!app.isPackaged) list.push(pathMod.join(__dirname, '..', 'tts_out'));   // 源码版兼容手工构建的语音包
     return list.filter(Boolean);
   }
   // 某角色的语音包目录（含 emotions.json 的那个候选目录）
@@ -740,6 +750,9 @@ function createTtsManager(ctx) {
         if (fsMod.existsSync(f)) shell.showItemInFolder(f); else shell.openPath(logDirPath());
         return { ok: true, file: f };
       } catch (err) { return { ok: false, error: err && err.message }; }
+    });
+    ipcMain.handle('tts-open-data', () => {
+      try { require('electron').shell.openPath(dataRoot()); return { ok: true, dir: dataRoot() }; } catch (err) { return { ok: false, error: err && err.message }; }
     });
     ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
     ipcMain.handle('tts-check-update', () => checkUpdate());
