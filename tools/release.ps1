@@ -20,8 +20,12 @@ param(
   [switch]$DryRun
 )
 
-$ErrorActionPreference = 'Stop'
+# 说明：gh / git 等外部命令会把正常信息写入 stderr（例如 gh auth status 输出 "github.com"），
+# 若把 $ErrorActionPreference 设为 Stop，PowerShell 会将其误判为致命错误并中断脚本。
+# 因此这里统一使用 Continue，并在每个关键步骤显式检查 $LASTEXITCODE。
+$ErrorActionPreference = 'Continue'
 function Write-Step($t) { Write-Host "`n== $t" -ForegroundColor Cyan }
+function Fail($msg) { Write-Host $msg -ForegroundColor Red; throw $msg }
 function Find-Gh {
   $cands = @("$env:ProgramFiles\GitHub CLI\gh.exe", "${env:ProgramFiles(x86)}\GitHub CLI\gh.exe",
              (Get-Command gh -ErrorAction SilentlyContinue).Source)
