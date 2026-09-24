@@ -3,12 +3,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
+const os = require('os');
 const root = path.join(__dirname, 'assets');
+// 用户数据根目录：Windows=%APPDATA%；macOS=~/Library/Application Support；Linux=~/.config
+const APP_DATA_ROOT = process.env.APPDATA || (process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support')
+  : path.join(os.homedir(), '.config'));
 // 运行数据目录：开发时=项目内 data/；打包后（asar 只读）→ %APPDATA%/ReDreamingAngels/data
 const _inAsar = __dirname.indexOf('app.asar') !== -1 || process.env.PORTABLE_EXECUTABLE_DIR ||
   (process.env.APP_BUNDLE && /\.asar$/i.test(process.env.APP_BUNDLE));
 const dataDir = _inAsar
-  ? path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'data')
+  ? path.join(APP_DATA_ROOT, 'ReDreamingAngels', 'data')
   : path.join(__dirname, 'data');
 
 function imageToDataUrl(p) {
@@ -27,7 +32,7 @@ function audioToDataUrl(p) {
   const rel = String(p).replace(/^bgm\//, '');
   let abs = path.join(root, p);
   if (!fs.existsSync(abs)) {
-    const cand = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm', rel);
+    const cand = path.join(APP_DATA_ROOT, 'ReDreamingAngels', 'bgm', rel);
     if (fs.existsSync(cand)) abs = cand;
   }
   const buf = fs.readFileSync(abs);
@@ -44,7 +49,7 @@ function audioToDataUrl(p) {
 
 // 扫描音频：内置 assets/bgm/ + 用户导入目录 %APPDATA%/ReDreamingAngels/bgm（播放器"添加歌曲"导入到后者）
 const AUDIO_EXTS = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
-const userBgmDir = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+const userBgmDir = path.join(APP_DATA_ROOT, 'ReDreamingAngels', 'bgm');
 function isAudio(f) { return AUDIO_EXTS.some((e) => f.toLowerCase().endsWith(e)); }
 function listAudio() {
   const out = [];
