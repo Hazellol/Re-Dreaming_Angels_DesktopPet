@@ -362,6 +362,9 @@
   // 聊天气泡定位：防出屏，优先级 上(头顶) → 右(角色右侧) → 左(角色左侧)，全不行则 clamp 回屏内
   function placePopover() {
     if (!popover.classList.contains('show')) return;
+    // 气泡随角色缩放：字号/内边距/描边/尾巴由 CSS 变量统一驱动。
+    // 写在量尺寸（offsetWidth/Height）之前，保证下方防出屏判断用的是缩放后的真实尺寸。
+    popover.style.setProperty('--bub-scale', roleScale(bubbleRole).toFixed(3));
     const cfg = ROLES[bubbleRole];
     const pad = 8;
     const w = popover.offsetWidth || 140, h = popover.offsetHeight || 46;

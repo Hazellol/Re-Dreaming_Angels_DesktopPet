@@ -13,18 +13,24 @@
   #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
   /* 头顶对话气泡（还原原版：白底粗黑描边+居中台词+黑色描边尾巴） */
   .popover {
+    /* --bub-scale：气泡缩放系数，由 placePopover() 每帧按当前说话角色的缩放写入，
+       使台词气泡（字号 / 内边距 / 描边 / 尾巴）跟角色一起变大变小 */
+    --bub-scale: 1;
     position: fixed; left: 0; top: 0;
     transform: translate(-50%, -100%);
     background: #ffffff;
     color: #3f3140;
-    font: 600 14px/1.7 "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-weight: 600;
+    font-size: calc(14px * var(--bub-scale));
+    line-height: 1.7;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
     text-align: center;
-    padding: 10px 18px;
-    border-radius: 20px;
-    border: 3px solid #3f3140;
+    padding: calc(10px * var(--bub-scale)) calc(18px * var(--bub-scale));
+    border-radius: calc(20px * var(--bub-scale));
+    border: calc(3px * var(--bub-scale)) solid #3f3140;
     box-shadow: 0 5px 14px rgba(40, 20, 40, .25);
-    max-width: 320px;
-    min-width: 120px;
+    max-width: calc(320px * var(--bub-scale));
+    min-width: calc(120px * var(--bub-scale));
     white-space: pre-wrap;
     pointer-events: none;
     display: none;
@@ -39,41 +45,41 @@
   /* 气泡尾巴按位置指向角色：上=朝下 / 右=朝左 / 左=朝右 */
   .popover::after {
     content: ''; position: absolute;
-    left: 50%; bottom: -13px; transform: translateX(-50%);
-    border: 12px solid transparent;
+    left: 50%; bottom: calc(-13px * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(12px * var(--bub-scale)) solid transparent;
     border-top-color: #3f3140;
     border-bottom: none;
   }
   .popover::before {
     content: ''; position: absolute;
-    left: 50%; bottom: -6px; transform: translateX(-50%);
-    border: 8px solid transparent;
+    left: 50%; bottom: calc(-6px * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(8px * var(--bub-scale)) solid transparent;
     border-top-color: #ffffff;
     border-bottom: none;
     z-index: 1;
   }
   .popover.pos-right::after {
-    left: -18px; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: 12px solid transparent;
+    left: calc(-18px * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(12px * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-right-color: #3f3140; border-left: none;
   }
   .popover.pos-right::before {
-    left: -10px; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: 8px solid transparent;
+    left: calc(-10px * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(8px * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-right-color: #ffffff; border-left: none;
     z-index: 1;
   }
   .popover.pos-left::after {
-    right: -18px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: 12px solid transparent;
+    right: calc(-18px * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(12px * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-left-color: #3f3140; border-right: none;
   }
   .popover.pos-left::before {
-    right: -10px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: 8px solid transparent;
+    right: calc(-10px * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(8px * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-left-color: #ffffff; border-right: none;
     z-index: 1;
@@ -85,15 +91,15 @@
   @keyframes dotBlink { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
   .popover::after {
     content: ''; position: absolute;
-    left: 50%; bottom: -13px; transform: translateX(-50%);
-    border: 12px solid transparent;
+    left: 50%; bottom: calc(-13px * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(12px * var(--bub-scale)) solid transparent;
     border-top-color: #3f3140;
     border-bottom: none;
   }
   .popover::before {
     content: ''; position: absolute;
-    left: 50%; bottom: -6px; transform: translateX(-50%);
-    border: 8px solid transparent;
+    left: 50%; bottom: calc(-6px * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(8px * var(--bub-scale)) solid transparent;
     border-top-color: #ffffff;
     border-bottom: none;
     z-index: 1;
