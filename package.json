@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "pack:portable": "electron-builder --win portable",
-    "pack:installer": "electron-builder --win nsis"
+    "pack:installer": "electron-builder --win nsis",
+    "pack:mac": "electron-builder --mac dmg"
   },
   "author": "master",
   "license": "MIT",
@@ -59,6 +60,23 @@
     },
     "asarUnpack": [
       "**/node_modules/koffi/**"
-    ]
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.entertainment",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "artifactName": "ReDreamingAngels-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "ReDreamingAngels-${version}-mac-${arch}.${ext}"
+    }
   }
 }

@@ -41,7 +41,13 @@ let tts = null;   // TTS 管理器（src/main-tts.js）
 const DESKTOP = true;   // 仅桌面版（房间版已移除）
 const NOTOP = process.env.QX_NOTOP === '1';
 // 用户歌曲目录（播放器"添加歌曲"导入处；打包版 assets 只读 → 用户曲目统一放这里）
-const USER_BGM_DIR = path.join(process.env.APPDATA || path.dirname(process.execPath), 'ReDreamingAngels', 'bgm');
+// 平台判定：本项目大量依赖 Win32（powershell 探测、SetWindowRgn）——非 Windows 平台一律跳过这些分支
+const IS_WIN = process.platform === 'win32';
+// 用户数据根目录：Windows=%APPDATA%；macOS=~/Library/Application Support；Linux=~/.config
+const USER_DATA_ROOT = process.env.APPDATA || (() => {
+  try { return app.getPath('appData'); } catch (e) { return path.dirname(process.execPath); }
+})();
+const USER_BGM_DIR = path.join(USER_DATA_ROOT, 'ReDreamingAngels', 'bgm');
 
 // ===== pet:// 自定义协议：音频/资源流式加载（避免 base64 data URL 常驻内存）=====
 // pet://bgm/xxx.mp3 → assets/bgm/xxx.mp3（不存在则用户歌曲目录）；支持 asar（net.fetch + file://）
@@ -203,6 +209,7 @@ function setOccluded(v) {
   try { if (win && !win.isDestroyed()) win.webContents.send('occluded', v); } catch (e) { /* noop */ }
 }
 function checkOcclusion() {
+  if (!IS_WIN) return;
   if (occBusy || !win || win.isDestroyed()) return;
   // 安全阀：只在"用户确实在交互"（拖动/编辑等）时强制视为可见——此时绝不暂停渲染。
   // ⚠️ 不能用"鼠标在她们区域内"判定：被覆盖时鼠标坐标同样会落在她们矩形上（视觉上并不可见）。
@@ -229,6 +236,7 @@ function checkOcclusion() {
     });
 }
 function startOcclusionWatch() {
+  if (!IS_WIN) { console.log('[OCCLUSION] non-Windows platform \u2192 skip (powershell unavailable)'); return; }
   if (occTimer) clearInterval(occTimer);
   occTimer = setInterval(checkOcclusion, 3000);   // 3s 一轮：恢复延迟 ≤3s，开销可接受
   setTimeout(checkOcclusion, 2500);
@@ -243,6 +251,7 @@ let guardBusy = false;
 let lastGuardAt = 0;
 let dragStuckSince = 0;
 function checkMouseGuard() {
+  if (!IS_WIN) return;   // 非 Windows 无 GetAsyncKeyState 探测，靠下方 12s 超时兜底
   const now = Date.now();
   if (guardBusy || now - lastGuardAt < 2000) return;
   lastGuardAt = now;
@@ -286,6 +295,9 @@ let cursorMovedAt = 0;
 // 判据（精确、无误报）：**光标正在移动** 却 **renderer 长时间收不到任何鼠标事件** → 输入通道失效。
 // （鼠标静止不动时事件计数本就不增长，不能据此判断——否则会疯狂误报。）
 function checkInputChannel(cx, cy) {
+  // 该自愈针对 Windows 下 Chromium 输入通道被破坏的已知故障；
+  // 非 Windows 平台事件转发语义不同（会误报），且 L2 改窗口尺寸会造成可见抖动 \u2192 直接跳过
+  if (!IS_WIN) return;
   const now = Date.now();
   if (cx >= 0 && (cx !== prevCursor.x || cy !== prevCursor.y)) {
     prevCursor = { x: cx, y: cy };
