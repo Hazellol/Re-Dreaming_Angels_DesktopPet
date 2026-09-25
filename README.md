@@ -8,6 +8,15 @@
 
 源码级 Spine 动画还原 · 桌面互动 · AI 角色扮演对话 · 本地语音合成
 
+<a href="https://github.com/Hazellol/Re-Dreaming_Angels_DesktopPet/releases/latest">
+  <img src="https://img.shields.io/badge/%E2%AC%87%20%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-Releases-e0559a?style=for-the-badge" alt="下载最新版">
+</a>
+<a href="README-macOS.md">
+  <img src="https://img.shields.io/badge/macOS-%E8%BF%90%E8%A1%8C%E8%AF%B4%E6%98%8E-7a6a74?style=for-the-badge" alt="macOS 说明">
+</a>
+
+<br>
+
 [![Version](https://img.shields.io/badge/version-1.1.2-e0559a?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-3f3140?style=flat-square)](#版权与许可)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-7a6a74?style=flat-square)](README-macOS.md)
@@ -78,6 +87,12 @@
 ---
 
 ## 快速开始
+
+### 直接使用（推荐）
+
+前往 [**Releases**](https://github.com/Hazellol/Re-Dreaming_Angels_DesktopPet/releases/latest) 下载 `ReDreamingAngels-Portable-x.x.x.exe`，双击即可运行（无需安装 Node.js）。
+
+> 首次启动如遇系统安全提示，选择「仍要运行」即可（未做代码签名）。
 
 ### 开发运行
 
