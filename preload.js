@@ -123,6 +123,24 @@ contextBridge.exposeInMainWorld('deskpet', {
   setTopmost: (v) => ipcRenderer.invoke('set-topmost', v),
   // 播放器：导入歌曲（系统文件对话框 → 复制到用户歌曲目录）
   importBgm: () => ipcRenderer.invoke('import-bgm'),
+  // 删除用户导入的歌曲（内置 assets/bgm 不可删：打包后只读，且属随包资源）
+  deleteBgm: (name) => {
+    try {
+      const safe = path.basename(String(name || '')).replace(/^bgm[\\/]/, '');
+      if (!safe) return { ok: false, error: '名称无效' };
+      const p = path.join(userBgmDir, safe);
+      if (!fs.existsSync(p)) return { ok: false, error: '内置歌曲不可删除' };
+      fs.unlinkSync(p);
+      return { ok: true, name: safe };
+    } catch (e) { return { ok: false, error: (e && e.message) || '删除失败' }; }
+  },
+  // 判断某曲目是否为"用户导入"（决定是否显示删除按钮）
+  isUserBgm: (name) => {
+    try {
+      const safe = path.basename(String(name || '')).replace(/^bgm[\\/]/, '');
+      return !!safe && fs.existsSync(path.join(userBgmDir, safe));
+    } catch (e) { return false; }
+  },
   aiChat: (payload) => ipcRenderer.invoke('ai-chat', payload),
   aiTest: (cfg) => ipcRenderer.invoke('ai-test', cfg),
   env: (k) => (process.env[k] || null),

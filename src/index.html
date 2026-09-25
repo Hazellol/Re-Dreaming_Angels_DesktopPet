@@ -15,22 +15,23 @@
   .popover {
     /* --bub-scale：气泡缩放系数，由 placePopover() 每帧按当前说话角色的缩放写入，
        使台词气泡（字号 / 内边距 / 描边 / 尾巴）跟角色一起变大变小 */
+    --bub-base: 1.3;   /* 全局气泡放大系数（用户反馈偏小，放大 0.3 倍）*/
     --bub-scale: 1;
     position: fixed; left: 0; top: 0;
     transform: translate(-50%, -100%);
     background: #ffffff;
     color: #3f3140;
     font-weight: 600;
-    font-size: calc(14px * var(--bub-scale));
+    font-size: calc(14px * var(--bub-base) * var(--bub-scale));
     line-height: 1.7;
     font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
     text-align: center;
-    padding: calc(10px * var(--bub-scale)) calc(18px * var(--bub-scale));
-    border-radius: calc(20px * var(--bub-scale));
-    border: calc(3px * var(--bub-scale)) solid #3f3140;
+    padding: calc(10px * var(--bub-base) * var(--bub-scale)) calc(18px * var(--bub-base) * var(--bub-scale));
+    border-radius: calc(20px * var(--bub-base) * var(--bub-scale));
+    border: calc(3px * var(--bub-base) * var(--bub-scale)) solid #3f3140;
     box-shadow: 0 5px 14px rgba(40, 20, 40, .25);
-    max-width: calc(320px * var(--bub-scale));
-    min-width: calc(120px * var(--bub-scale));
+    max-width: calc(320px * var(--bub-base) * var(--bub-scale));
+    min-width: calc(120px * var(--bub-base) * var(--bub-scale));
     white-space: pre-wrap;
     pointer-events: none;
     display: none;
@@ -45,41 +46,41 @@
   /* 气泡尾巴按位置指向角色：上=朝下 / 右=朝左 / 左=朝右 */
   .popover::after {
     content: ''; position: absolute;
-    left: 50%; bottom: calc(-13px * var(--bub-scale)); transform: translateX(-50%);
-    border: calc(12px * var(--bub-scale)) solid transparent;
+    left: 50%; bottom: calc(-13px * var(--bub-base) * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(12px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: #3f3140;
     border-bottom: none;
   }
   .popover::before {
     content: ''; position: absolute;
-    left: 50%; bottom: calc(-6px * var(--bub-scale)); transform: translateX(-50%);
-    border: calc(8px * var(--bub-scale)) solid transparent;
+    left: 50%; bottom: calc(-6px * var(--bub-base) * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(8px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: #ffffff;
     border-bottom: none;
     z-index: 1;
   }
   .popover.pos-right::after {
-    left: calc(-18px * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
-    border: calc(12px * var(--bub-scale)) solid transparent;
+    left: calc(-18px * var(--bub-base) * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(12px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-right-color: #3f3140; border-left: none;
   }
   .popover.pos-right::before {
-    left: calc(-10px * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
-    border: calc(8px * var(--bub-scale)) solid transparent;
+    left: calc(-10px * var(--bub-base) * var(--bub-scale)); top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(8px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-right-color: #ffffff; border-left: none;
     z-index: 1;
   }
   .popover.pos-left::after {
-    right: calc(-18px * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: calc(12px * var(--bub-scale)) solid transparent;
+    right: calc(-18px * var(--bub-base) * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(12px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-left-color: #3f3140; border-right: none;
   }
   .popover.pos-left::before {
-    right: calc(-10px * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
-    border: calc(8px * var(--bub-scale)) solid transparent;
+    right: calc(-10px * var(--bub-base) * var(--bub-scale)); left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+    border: calc(8px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: transparent; border-bottom: none;
     border-left-color: #ffffff; border-right: none;
     z-index: 1;
@@ -91,15 +92,15 @@
   @keyframes dotBlink { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
   .popover::after {
     content: ''; position: absolute;
-    left: 50%; bottom: calc(-13px * var(--bub-scale)); transform: translateX(-50%);
-    border: calc(12px * var(--bub-scale)) solid transparent;
+    left: 50%; bottom: calc(-13px * var(--bub-base) * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(12px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: #3f3140;
     border-bottom: none;
   }
   .popover::before {
     content: ''; position: absolute;
-    left: 50%; bottom: calc(-6px * var(--bub-scale)); transform: translateX(-50%);
-    border: calc(8px * var(--bub-scale)) solid transparent;
+    left: 50%; bottom: calc(-6px * var(--bub-base) * var(--bub-scale)); transform: translateX(-50%);
+    border: calc(8px * var(--bub-base) * var(--bub-scale)) solid transparent;
     border-top-color: #ffffff;
     border-bottom: none;
     z-index: 1;
@@ -194,12 +195,24 @@
   }
   #music-panel .mp-list.open { display: block; }
   #music-panel .mp-item {
-    padding: 6px 10px; border-radius: 9px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;      /* 容纳右侧删除按钮 */
+    padding: 6px 8px 6px 24px; border-radius: 9px; cursor: pointer;
     font: 500 12px/1.5 "Microsoft YaHei", sans-serif;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    position: relative; padding-left: 24px;
+    position: relative;
     transition: background .12s ease;
   }
+  #music-panel .mp-item-name {
+    flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* 删除按钮：默认隐形，悬停曲目时淡入（仅用户导入的曲目会渲染） */
+  #music-panel .mp-del {
+    flex: 0 0 auto; border: none; background: transparent; cursor: pointer;
+    color: #c8a0b0; font-size: 12px; line-height: 1; padding: 2px 5px; border-radius: 6px;
+    opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
+  }
+  #music-panel .mp-item:hover .mp-del { opacity: .75; }
+  #music-panel .mp-del:hover { opacity: 1; background: #ffdce9; color: #d0408a; }
   #music-panel .mp-item::before {
     content: '♪'; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
     font-size: 11px; color: transparent; transition: color .12s ease;

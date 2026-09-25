@@ -146,6 +146,9 @@
     if (drag.on && drag.key === key) return;           // 拖动中不施力（跟光标）
     const b = gravityBounds();
     c.vel.y -= GRAV.g * dt;                            // 重力（世界 y 向上）
+    // 速度上限（GRAV.maxV 原先只定义未使用）：防止极端甩飞速度导致角色"瞬移"般掠过屏幕
+    const sp = Math.hypot(c.vel.x, c.vel.y);
+    if (sp > GRAV.maxV) { const k = GRAV.maxV / sp; c.vel.x *= k; c.vel.y *= k; }
     c.container.x += c.vel.x * dt;
     c.container.y += c.vel.y * dt;
     // 地面（最低点）
@@ -288,9 +291,14 @@
     // 路点 dir 与移动方向相反时动画就反了——以 B 相对 A 的方向为准）
     const moveDir = Math.abs(B.x - A.x) < 1e-6 ? target.dir : (B.x > A.x ? 1 : -1);
     onWalkStart(key, moveDir);
+    // ⚠️ 走动时长必须按**实际位移距离**计算，保证速度恒定。
+    //    原实现 dur = WALK_TIME + |Δy|*2.2 只补偿竖直距离；重力模式下 B.y===A.y，水平距离不参与，
+    //    于是角色被甩飞到屏幕另一侧后，仍要在固定时长内走完上百像素 → 表现为"瞬间横穿全屏"。
+    const dist = Math.hypot(B.x - A.x, B.y - A.y);
+    const speed = Math.max(30, Number(cfg.walkSpeed) || Number(CFG.WALK_SPEED) || 130);   // px/s（角色步速）
     c.walkTween = {
       start: performance.now(),
-      dur: Math.max(700, CFG.WALK_TIME * 1000 + Math.abs(B.y - A.y) * 2.2),
+      dur: Math.max(600, (dist / speed) * 1000 + Math.abs(B.y - A.y) * 0.6),
       update: (k) => {
         c.container.x = A.x + (B.x - A.x) * k;
         c.container.y = A.y + (B.y - A.y) * k;
@@ -351,12 +359,27 @@
     bubbleLock = true;
     bubbleIsChat = false;   // 普通互动/待机气泡
     if (role) bubbleRole = role;
-    popover.textContent = msgText;
+    // 打字机呈现（与聊天气泡一致的观感；用户反馈待机台词"呼一下就没"，希望逐字出现）
+    if (bubbleTypingTimer) { clearTimeout(bubbleTypingTimer); bubbleTypingTimer = null; }
+    if (bubbleHideTimer) { clearTimeout(bubbleHideTimer); bubbleHideTimer = null; }
+    popover.textContent = '';
     popover.classList.add('show');
-    bubbleHideTimer = setTimeout(() => {
-      popover.classList.remove('show');
-      bubbleLock = false;
-    }, holdMs || CFG.BUBBLE_INTERVAL);
+    placePopover();
+    const text = String(msgText == null ? '' : msgText);
+    let i = 0;
+    const step = () => {
+      i = Math.min(i + 2, text.length);
+      popover.textContent = text.slice(0, i);
+      placePopover();
+      if (i < text.length) { bubbleTypingTimer = setTimeout(step, 36); return; }
+      bubbleTypingTimer = null;
+      // 停留时长：调用点传入值 + 2000ms（用户反馈消失太快，统一延长 2 秒）
+      bubbleHideTimer = setTimeout(() => {
+        popover.classList.remove('show');
+        bubbleLock = false;
+      }, (holdMs || CFG.BUBBLE_INTERVAL) + 2000);
+    };
+    step();
     return true;
   }
   // 聊天气泡定位：防出屏，优先级 上(头顶) → 右(角色右侧) → 左(角色左侧)，全不行则 clamp 回屏内
@@ -1224,7 +1247,38 @@
       const it = document.createElement('div');
       it.className = 'mp-item';
       it.setAttribute('data-i', String(i));
-      it.textContent = (i + 1) + '. ' + name;
+      const label = document.createElement('span');
+      label.className = 'mp-item-name';
+      label.textContent = (i + 1) + '. ' + name;
+      it.appendChild(label);
+      // 删除按钮：仅用户导入的曲目可删（内置曲目在打包版为只读资源）
+      let userOwned = false;
+      try { userOwned = !!(dk.isUserBgm && dk.isUserBgm(name)); } catch (e) { userOwned = false; }
+      if (userOwned) {
+        const del = document.createElement('button');
+        del.className = 'mp-del';
+        del.type = 'button';
+        del.title = '从播放器移除该歌曲';
+        del.textContent = '✕';
+        del.addEventListener('click', (ev) => {
+          ev.stopPropagation();                 // 不要触发"切歌"
+          if (!confirm('确定要从播放器移除《' + name + '》吗？\n（文件将从用户歌曲目录中删除）')) return;
+          try {
+            const r = dk.deleteBgm(name);
+            if (!r || !r.ok) { alert('删除失败：' + ((r && r.error) || '未知错误')); return; }
+            const wasCurrent = BGM_NAMES[i] === name;
+            rescanBgm();                        // 重扫曲目列表
+            if (BGM_NAMES.length === 0) { stopBgm(); }
+            else if (wasCurrent) { audioCfg.bgmIdx = Math.min(audioCfg.bgmIdx, BGM_NAMES.length - 1); setBgm(audioCfg.bgmIdx, audioCfg.bgmOn); }
+            else { audioCfg.bgmIdx = Math.max(0, Math.min(audioCfg.bgmIdx, BGM_NAMES.length - 1)); }
+            saveAudioCfg();
+            refreshMusicPanel();
+            buildMusicList();                   // 列表保持展开并立即刷新（原实现在此处缺刷新，见下方导入处注释）
+            mpTrack.insertAdjacentHTML('beforeend', '<div class="mp-note" style="font-size:11px;color:#d0408a;padding:2px 8px;">已移除：' + String(name).replace(/</g, '') + '</div>');
+          } catch (e) { /* noop */ }
+        });
+        it.appendChild(del);
+      }
       it.addEventListener('click', () => {
         setBgm(i, true);            // 立即切换并按当前模式播放
         refreshMusicPanel();
@@ -1279,6 +1333,8 @@
         audioCfg.bgmIdx = Math.min(audioCfg.bgmIdx, BGM_FILES.length - 1);
         saveAudioCfg();
         refreshMusicPanel();
+        // ★ 修复（用户反馈）：列表处于展开状态时必须立即重建，否则新增歌曲要「收起再展开」才出现
+        if (mpList.classList.contains('open')) buildMusicList();
         mpTrack.insertAdjacentHTML('beforeend',
           '<div class="mp-note" style="font-size:11px;color:#d0408a;padding:2px 8px;">✅ 已添加 ' + r.added.length + ' 首：' +
           r.added.map((s) => String(s).replace(/</g, '')).slice(0, 3).join('、') + (r.added.length > 3 ? ' …' : '') + '</div>');
@@ -1824,8 +1880,8 @@
       if (i < text.length) bubbleTypingTimer = setTimeout(step, 36);
       else {
         bubbleTypingTimer = null;
-        // 规则：聊天仍打开 → 气泡保持显示；聊天已关闭 → 3 秒后关闭
-        scheduleBubbleHide(3000);
+        // 规则：聊天仍打开 → 气泡保持显示；聊天已关闭 → 停留 5 秒后关闭（原 3 秒，用户反馈太快）
+        scheduleBubbleHide(5000);
       }
     };
     step();
