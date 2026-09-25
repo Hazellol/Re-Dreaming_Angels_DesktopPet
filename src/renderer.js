@@ -908,6 +908,16 @@
   function petUrl(rel) {
     return 'pet://' + String(rel).split('/').map(encodeURIComponent).join('/');
   }
+  // BGM 专用：优先用 file:// + 绝对路径。pet:// 是自定义协议，Chromium 拿不到可 seek 的
+  // 时长信息（表现为进度条右侧一直是 0:00、且拖动无效）——file:// 走本地文件读取，
+  // duration / seekable 均正常（页面自身就是 file://，同源，无 CORS 问题）。
+  function bgmUrl(rel) {
+    try {
+      const abs = dk.absolutePath ? dk.absolutePath(rel) : null;
+      if (abs) return 'file:///' + String(abs).replace(/\\/g, '/').replace(/^\/+/, '');
+    } catch (e) { /* noop */ }
+    return petUrl(rel);
+  }
   function playSfxFile(file) {
     try {
       const a = new Audio(petUrl(file));
@@ -969,7 +979,7 @@
   }
   function startBgm() {
     stopBgm();
-    bgmAudio = new Audio(petUrl(BGM_FILES[audioCfg.bgmIdx]));
+    bgmAudio = new Audio(bgmUrl(BGM_FILES[audioCfg.bgmIdx]));
     bgmAudio.loop = (audioCfg.playMode === 'loop');
     applyBgmVolume();
     bgmAudio.play().catch(() => { audioCfg.bgmOn = false; });
@@ -1228,15 +1238,25 @@
   const mpTimeCur = document.getElementById('mp-time-cur');
   const mpTimeDur = document.getElementById('mp-time-dur');
   const mpMode = document.getElementById('mp-mode');
+  const mpModeLabel = document.getElementById('mp-mode-label');
+  const mpPlayIco = document.getElementById('mp-play-ico');
   function refreshMusicPanel() {
     mpTrack.innerHTML =
       '<span class="mp-note">🎵</span><span id="mp-track-name">' + BGM_NAMES[audioCfg.bgmIdx] +
       ' (' + (audioCfg.bgmIdx + 1) + '/' + BGM_FILES.length + ')</span> <span class="mp-arrow">▾</span>';
     musicPanel.classList.toggle('playing', audioCfg.bgmOn);   // 播放中：音符律动
-    mpPlay.textContent = audioCfg.bgmOn ? '⏸' : '▶';
     mpVol.value = audioCfg.bgmVol;
-    mpMode.textContent = (audioCfg.playMode === 'loop') ? '🔂' : '🔁';
-    mpMode.title = (audioCfg.playMode === 'loop') ? '单曲循环（点击切顺序）' : '顺序播放（点击切单曲循环）';
+    // 播放/暂停图标（内联 SVG 路径切换）
+    if (mpPlayIco) {
+      mpPlayIco.innerHTML = audioCfg.bgmOn
+        ? '<rect x="6.4" y="5" width="4" height="14" rx="1.5"/><rect x="13.6" y="5" width="4" height="14" rx="1.5"/>'
+        : '<path d="M7.5 4.5v15L19.5 12z"/>';
+    }
+    // 循环模式：图标 + 文字标签 + 激活态高亮（用户反馈原 emoji 看不出当前模式）
+    const isLoop = audioCfg.playMode === 'loop';
+    mpMode.classList.toggle('loop-one', isLoop);
+    if (mpModeLabel) mpModeLabel.textContent = isLoop ? '单曲' : '顺序';
+    mpMode.title = isLoop ? '当前：单曲循环（点击切换为顺序播放）' : '当前：顺序播放（点击切换为单曲循环）';
     // 列表高亮
     const items = mpList.querySelectorAll('.mp-item');
     items.forEach((el) => el.classList.toggle('cur', +el.getAttribute('data-i') === audioCfg.bgmIdx));
@@ -1252,28 +1272,31 @@
       label.textContent = (i + 1) + '. ' + name;
       it.appendChild(label);
       // 删除按钮：仅用户导入的曲目可删（内置曲目在打包版为只读资源）
+      // ⚠️ 判定必须用磁盘真实文件名（BGM_FILES[i]，如 "bgm/233.mp3"）；
+      //    显示名（BGM_NAMES[i]，如 "233"）在磁盘上并不存在 → 会永远判为"内置"而不显示按钮
+      const realFile = BGM_FILES[i] || name;
       let userOwned = false;
-      try { userOwned = !!(dk.isUserBgm && dk.isUserBgm(name)); } catch (e) { userOwned = false; }
+      try { userOwned = !!(dk.isUserBgm && dk.isUserBgm(realFile)); } catch (e) { userOwned = false; }
       if (userOwned) {
         const del = document.createElement('button');
         del.className = 'mp-del';
         del.type = 'button';
-        del.title = '从播放器移除该歌曲';
-        del.textContent = '✕';
+        del.title = '从播放器移除《' + name + '》';
+        del.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></svg>';
         del.addEventListener('click', (ev) => {
           ev.stopPropagation();                 // 不要触发"切歌"
           if (!confirm('确定要从播放器移除《' + name + '》吗？\n（文件将从用户歌曲目录中删除）')) return;
           try {
-            const r = dk.deleteBgm(name);
+            const r = dk.deleteBgm(realFile);
             if (!r || !r.ok) { alert('删除失败：' + ((r && r.error) || '未知错误')); return; }
-            const wasCurrent = BGM_NAMES[i] === name;
+            const wasCurrent = (BGM_FILES[i] === realFile);
             rescanBgm();                        // 重扫曲目列表
-            if (BGM_NAMES.length === 0) { stopBgm(); }
-            else if (wasCurrent) { audioCfg.bgmIdx = Math.min(audioCfg.bgmIdx, BGM_NAMES.length - 1); setBgm(audioCfg.bgmIdx, audioCfg.bgmOn); }
-            else { audioCfg.bgmIdx = Math.max(0, Math.min(audioCfg.bgmIdx, BGM_NAMES.length - 1)); }
+            if (BGM_FILES.length === 0) { stopBgm(); }
+            else if (wasCurrent) { audioCfg.bgmIdx = Math.min(audioCfg.bgmIdx, BGM_FILES.length - 1); setBgm(audioCfg.bgmIdx, audioCfg.bgmOn); }
+            else { audioCfg.bgmIdx = Math.max(0, Math.min(audioCfg.bgmIdx, BGM_FILES.length - 1)); }
             saveAudioCfg();
             refreshMusicPanel();
-            buildMusicList();                   // 列表保持展开并立即刷新（原实现在此处缺刷新，见下方导入处注释）
+            buildMusicList();                   // 列表保持展开并立即刷新
             mpTrack.insertAdjacentHTML('beforeend', '<div class="mp-note" style="font-size:11px;color:#d0408a;padding:2px 8px;">已移除：' + String(name).replace(/</g, '') + '</div>');
           } catch (e) { /* noop */ }
         });
@@ -1289,13 +1312,43 @@
     });
   }
   onBgmMeta = (dur) => { mpTimeDur.textContent = fmtTime(dur); };
+  // 可 seek 时长：duration 有时为 Infinity/NaN（流式或异常容器）→ 回退到 seekable 区间
+  function seekableDuration() {
+    try {
+      if (!bgmAudio) return 0;
+      const d = bgmAudio.duration;
+      if (Number.isFinite(d) && d > 0) return d;
+      if (bgmAudio.seekable && bgmAudio.seekable.length) {
+        const e = bgmAudio.seekable.end(bgmAudio.seekable.length - 1);
+        if (Number.isFinite(e) && e > 0) return e;
+      }
+    } catch (e) { /* noop */ }
+    return 0;
+  }
   onBgmTime = (cur, dur) => {
     mpTimeCur.textContent = fmtTime(cur);
-    mpProg.value = dur > 0 ? Math.round((cur / dur) * 1000) : 0;
+    // 拖动进度条期间不要回写滑块位置，否则会被 timeupdate 立刻拉回（用户反馈"拖不动"）
+    if (progDragging) return;
+    const d = dur > 0 ? dur : seekableDuration();
+    mpProg.value = d > 0 ? Math.round((cur / d) * 1000) : 0;
   };
+  // 进度条拖动：pointerdown 进入拖动态，松开后恢复跟随播放
+  let progDragging = false;
+  mpProg.addEventListener('pointerdown', () => { progDragging = true; });
+  mpProg.addEventListener('pointerup', () => { progDragging = false; });
+  mpProg.addEventListener('pointercancel', () => { progDragging = false; });
+  window.addEventListener('pointerup', () => { progDragging = false; });
   mpProg.addEventListener('input', () => {
-    if (!bgmAudio || !bgmAudio.duration) return;
-    bgmAudio.currentTime = (mpProg.value / 1000) * bgmAudio.duration;
+    const d = seekableDuration();
+    if (d > 0 && bgmAudio) {
+      try { bgmAudio.currentTime = (mpProg.value / 1000) * d; } catch (e) { /* noop */ }
+    } else if (bgmAudio && bgmAudio.seekable && bgmAudio.seekable.length) {
+      // 时长未知但可 seek：按百分比映射到可 seek 区间
+      try {
+        const s0 = bgmAudio.seekable.start(0), s1 = bgmAudio.seekable.end(bgmAudio.seekable.length - 1);
+        bgmAudio.currentTime = s0 + (mpProg.value / 1000) * (s1 - s0);
+      } catch (e) { /* noop */ }
+    }
   });
   mpTrack.addEventListener('click', () => {
     mpList.classList.toggle('open');

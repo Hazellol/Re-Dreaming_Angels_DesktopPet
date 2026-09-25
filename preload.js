@@ -123,7 +123,18 @@ contextBridge.exposeInMainWorld('deskpet', {
   setTopmost: (v) => ipcRenderer.invoke('set-topmost', v),
   // 播放器：导入歌曲（系统文件对话框 → 复制到用户歌曲目录）
   importBgm: () => ipcRenderer.invoke('import-bgm'),
+  // 音频绝对路径：pet:// 流式加载拿不到 duration/seek 信息（进度条无法拖动），
+  // 播放器改用 file:// + 绝对路径（页面本身即 file://，同源无 CORS 问题）
+  absolutePath: (rel) => {
+    try {
+      const r = String(rel || '').replace(/^bgm[\\/]/, '');
+      const cands = [path.join(root, 'bgm', r), path.join(userBgmDir, r)];
+      for (const c of cands) { if (fs.existsSync(c)) return c; }
+    } catch (e) { /* noop */ }
+    return null;
+  },
   // 删除用户导入的歌曲（内置 assets/bgm 不可删：打包后只读，且属随包资源）
+  // 注意：入参应为**磁盘真实文件名**（含扩展名），而不是列表显示名
   deleteBgm: (name) => {
     try {
       const safe = path.basename(String(name || '')).replace(/^bgm[\\/]/, '');
@@ -134,7 +145,7 @@ contextBridge.exposeInMainWorld('deskpet', {
       return { ok: true, name: safe };
     } catch (e) { return { ok: false, error: (e && e.message) || '删除失败' }; }
   },
-  // 判断某曲目是否为"用户导入"（决定是否显示删除按钮）
+  // 判断某曲目是否为"用户导入"（决定是否显示删除按钮）；同样用真实文件名
   isUserBgm: (name) => {
     try {
       const safe = path.basename(String(name || '')).replace(/^bgm[\\/]/, '');
