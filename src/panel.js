@@ -368,6 +368,31 @@
     refreshTts();
   }));
 
+  // ================= 设置页：显示兼容（窗口区域裁剪开关） =================
+  async function refreshUiCfg() {
+    try {
+      const c = await dk.uiConfigGet();
+      if (!c) return;
+      if (ttsEl('ui-region')) ttsEl('ui-region').checked = c.regionEnabled !== false;
+      const hint = ttsEl('ui-region-hint');
+      if (hint) {
+        let extra = '';
+        if (!c.regionAvailable) extra = '（当前环境不支持该功能，已自动忽略）';
+        hint.textContent = '若角色周围出现黑色矩形块，可关闭此项后重启软件：该现象由窗口形状裁剪在部分显卡 / 驱动 / 系统设置下引起；关闭的代价是可能重现「播放视频时窗口黑屏」。' + extra;
+      }
+    } catch (e) { /* noop */ }
+  }
+  if (ttsEl('ui-region')) ttsEl('ui-region').addEventListener('change', async () => {
+    const on = ttsEl('ui-region').checked;
+    try {
+      await dk.uiConfigSet({ regionEnabled: on });
+      alert(on
+        ? '已开启窗口区域裁剪，重启软件后生效。'
+        : '已关闭窗口区域裁剪，重启软件后生效。\n\n关闭后角色周围的黑色矩形块应消失；若播放视频时出现黑屏，说明该环境仍需它，可以再打开。');
+    } catch (e) { /* noop */ }
+  });
+  refreshUiCfg();
+
   // ================= 设置页：多显示器（运行屏幕） =================
   const screenBtns = Array.from(document.querySelectorAll('#set-screen-modes .screen-mode'));
   function renderScreenMode(mode) {

@@ -16,7 +16,12 @@ const path = require('path');
 // 角色/浮层的矩形并集 —— 形状之外完全不参与命中与合成 → 视频 overlay 得以保留 ✓
 // 通过 koffi（预编译 FFI，无需编译工具链）调用；任一环节失败自动降级为"无区域"（原行为）。
 let regionApi = null;
-const USE_REGION = process.env.QX_NOREGION !== '1';
+// 窗口区域裁剪开关（可在控制台关闭：极少数显卡/驱动/系统设置下，形状裁剪会让"角色周围的透明
+// 部分"被填成黑色矩形块 —— 关闭后窗口恢复整窗透明，代价是可能重现"视频黑屏"问题，二者取其一）
+const UI_CFG_FILE = (() => { try { return require('path').join(app.getPath('userData'), 'ui_config.json'); } catch (e) { return null; } })();
+let uiCfg = {};
+try { if (UI_CFG_FILE) uiCfg = JSON.parse(require('fs').readFileSync(UI_CFG_FILE, 'utf8')) || {}; } catch (e) { uiCfg = {}; }
+const USE_REGION = process.env.QX_NOREGION !== '1' && uiCfg.regionEnabled !== false;
 try {
   const koffi = require('koffi');
   const user32 = koffi.load('user32.dll');
@@ -25,7 +30,9 @@ try {
     SetWindowRgn: user32.func('int SetWindowRgn(uintptr_t hWnd, uintptr_t hRgn, int bRedraw)'),
     CreateRectRgn: gdi32.func('uintptr_t CreateRectRgn(int x1, int y1, int x2, int y2)'),
     CombineRgn: gdi32.func('int CombineRgn(uintptr_t hrgnDest, uintptr_t hrgnSrc1, uintptr_t hrgnSrc2, int fnCombineMode)'),
-    DeleteObject: gdi32.func('int DeleteObject(uintptr_t hObject)')
+    DeleteObject: gdi32.func('int DeleteObject(uintptr_t hObject)'),
+    // 用于形状裁剪后强制整窗重绘（见 applyWindowRegion 末尾说明）
+    RedrawWindow: user32.func('int RedrawWindow(uintptr_t hWnd, uintptr_t lprcUpdate, uintptr_t hrgnUpdate, uint32_t flags)')
   };
   console.log('[REGION] koffi ready (SetWindowRgn available)');
 } catch (e) {
@@ -99,6 +106,41 @@ try { app.commandLine.appendSwitch('disable-direct-composition-video-overlays');
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
 // 降低峰值常驻内存（桌宠主要是贴图/GPU 占用，不在 V8 堆里，所以此值留足余量即可）。
 try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc'); } catch (e) { /* noop */ }
+
+// ===== UI 配置（窗口区域裁剪开关等；控制台可改，重启生效）=====
+function readUiCfg() {
+  try { return UI_CFG_FILE ? (JSON.parse(require('fs').readFileSync(UI_CFG_FILE, 'utf8')) || {}) : {}; } catch (e) { return {}; }
+}
+function writeUiCfg(patch) {
+  const next = Object.assign({}, readUiCfg(), patch || {});
+  try { if (UI_CFG_FILE) require('fs').writeFileSync(UI_CFG_FILE, JSON.stringify(next, null, 2), 'utf8'); } catch (e) { /* noop */ }
+  uiCfg = next;
+  return next;
+}
+ipcMain.handle('ui-config-get', () => ({
+  regionEnabled: uiCfg.regionEnabled !== false,   // 用户设置（下次启动生效）
+  regionActive: USE_REGION,                       // 本次启动是否真正启用了区域裁剪
+  regionAvailable: !!regionApi,                   // koffi / Win32 是否可用
+  configFile: UI_CFG_FILE
+}));
+ipcMain.handle('ui-config-set', (e, patch) => { writeUiCfg(patch); return { ok: true, restartRequired: true }; });
+// 系统"透明效果"检测：关闭时透明窗口会被填成黑色（用户反馈的"黑边"成因之一）
+function checkSystemTransparency() {
+  if (!IS_WIN) return;
+  try {
+    const { execFile } = require('child_process');
+    execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'EnableTransparency'],
+      { windowsHide: true, timeout: 4000 }, (err, so) => {
+        if (err) return;
+        const m = /EnableTransparency\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(so || '');
+        if (m && parseInt(m[1], 16) === 0) {
+          console.log('[TRANSPARENCY] ⚠ 系统"透明效果"已关闭 → 透明窗口可能显示为黑色块；建议在「设置 → 个性化 → 颜色」中开启"透明效果"');
+        } else {
+          console.log('[TRANSPARENCY] 系统透明效果：已开启');
+        }
+      });
+  } catch (e) { /* noop */ }
+}
 // 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
 app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {
@@ -396,6 +438,12 @@ function applyWindowRegion(rects) {
     }
     if (!acc) return;
     regionApi.SetWindowRgn(hwnd, acc, 1);   // 成功后 region 归系统所有（不可再 DeleteObject）
+    // ⚠️ 用户实测反馈：部分显卡/驱动/系统设置下，形状裁剪后"区域内的透明部分"会被窗口背景刷
+    //    填充为黑色（表现为角色周围出现黑色矩形块，形状与这里的矩形区域一致）。
+    //    成因是 Chromium 对 alpha=0 区域不做绘制，而这类环境下 DWM/GDI 不会自动透出下层。
+    //    处理：形状变化后强制整窗重绘，让渲染进程重新提交该区域的合成结果。
+    try { regionApi.RedrawWindow(hwnd, 0, 0, 0x1 | 0x4 | 0x80 | 0x100); } catch (e) { /* noop */ }   // INVALIDATE|ERASE|ALLCHILDREN|UPDATENOW
+    try { if (win && !win.isDestroyed() && win.webContents) win.webContents.invalidate(); } catch (e) { /* noop */ }
   } catch (e) {
     console.log('[REGION] apply failed:', e && e.message);
   }
@@ -650,6 +698,7 @@ function createWindow() {
   win = new BrowserWindow({
     x, y, width, height,
     transparent: true,
+    backgroundColor: '#00000000',   // 显式全透明：避免个别驱动下取默认背景色（黑/白）填充未绘制区域
     frame: false,
     resizable: false,
     movable: false,
@@ -885,6 +934,7 @@ app.whenReady().then(() => {
     }
   } catch (e) { console.error('[TTS] init failed', e); }
   createWindow();
+  checkSystemTransparency();   // 检测系统"透明效果"：关闭时透明窗口会被填成黑色（用户反馈的"黑边"成因之一）
   // ⚠️ 控制台改为**按需创建**（懒加载）：它曾是常驻的独立渲染进程（≈100MB+），
   // 用户反馈内存占用高 → 启动不创建，从托盘/右键菜单打开时才建，关闭即销毁。
 
