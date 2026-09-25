@@ -1009,7 +1009,7 @@
     // 面板共存：目标位置若已被其他打开的面板占据，向右下错开（避免完全重叠遮挡）
     let shift = 0;
     for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu]) {
-      if (!el || el === elm || el.style.display === 'none') continue;
+      if (!el || el === elm || getComputedStyle(el).display === 'none') continue;   // 同上：须用计算样式
       const r = el.getBoundingClientRect();
       if (r.right > x && r.left < x + w + 20 && r.bottom > y && r.top < y + h + 20) {
         shift += 34;
@@ -2339,11 +2339,13 @@
     // 模态浮层（右键菜单 / 可关闭面板）打开期间强制可交互——否则窗口处于穿透态，
     // "点击菜单外部关闭"的点击会被下层窗口吃掉，菜单关不掉（用户要求的点外部关闭就失效了）。
     // 音乐播放器 / 聊天面板 等常驻浮层不在此列（鼠标悬停其上时仍可交互）。
-    const modalOpen = (ctxMenu.style.display !== 'none') ||
-      (sizePanel && sizePanel.style.display !== 'none') ||
-      (volPanel && volPanel.style.display !== 'none') ||
-      (freqPanel && freqPanel.style.display !== 'none') ||
-      (chatterPanel && chatterPanel.style.display !== 'none');
+    // ⚠️ 面板的初始隐藏来自样式表（CSS display:none）——此时 el.style.display 为空串，
+    // 用内联样式判断会把“从未打开过的面板”误判为打开 → modalOpen 恒为 true
+    // → 窗口永久处于可交互态（不再点击穿透）。
+    // 改用计算样式，准确反映真实可见性。
+    const isOpen = (el) => !!el && getComputedStyle(el).display !== 'none';
+    const modalOpen = isOpen(ctxMenu) || isOpen(sizePanel) || isOpen(volPanel) ||
+      isOpen(freqPanel) || isOpen(chatterPanel);
     const forceInteractive = !!(drag.on || editMsgIndex != null || modalOpen);
     const moving = anyIdolPhysicallyMoving();
     if (!force && json === lastRectsJson && !forceInteractive && !moving) return;
