@@ -309,8 +309,8 @@ function checkInputChannel(cx, cy) {
   try {
     if (level === 1) {
       // L1：强制刷新穿透状态（值变化才会真正重设窗口扩展样式）
-      win.setIgnoreMouseEvents(true, { forward: true });
-      setTimeout(() => { try { if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(false, { forward: true }); } catch (e) { /* noop */ } }, 120);
+      setMouseIgnore(true);
+      setTimeout(() => { try { setMouseIgnore(false); } catch (e) { /* noop */ } }, 120);
     } else if (level === 2) {
       // L2：刷新层级 + 轻微改变窗口尺寸（触发窗口重新配置与重绘）
       // ⚠️ 恢复时**必须尊重用户的置顶开关**——早期版本这里无条件 setAlwaysOnTop(true)，
@@ -389,13 +389,23 @@ function applyWindowRegion(rects) {
   }
 }
 
+// 设置窗口穿透的**唯一入口**：调用 setIgnoreMouseEvents 的同时同步 lastIgnoreApplied 缓存。
+// ⚠️ 任何绕过它直接调 win.setIgnoreMouseEvents 的地方都会让缓存与窗口实际状态失步：
+//    缓存以为"已可交互"而跳过设置，窗口却仍在穿透 → 角色/菜单点不动。右键菜单开着时
+//    inside 恒为 true、永远不会走"离开→延迟恢复"分支，失步无法自愈，只能重启软件。
+function setMouseIgnore(ignore) {
+  if (!win || win.isDestroyed()) return;
+  win.setIgnoreMouseEvents(!!ignore, { forward: true });
+  lastIgnoreApplied = !!ignore;
+}
+
 function applyMouseIgnore(inside, cx, cy, why) {
   mousePollInside = inside;
   // 调试开关（用于二分定位"视频黑屏"是否由穿透状态切换引起）：
   //   QX_NOPASS=1    → 永不穿透（窗口始终可交互；会挡住下层点击，仅用于诊断）
   //   QX_ALWAYSPASS=1 → 永远穿透（不接收鼠标；同样仅用于诊断）
-  if (DIAG_NOPASS) { try { win.setIgnoreMouseEvents(false, { forward: true }); } catch (e) { /* noop */ } return; }
-  if (DIAG_ALWAYSPASS) { try { win.setIgnoreMouseEvents(true, { forward: true }); } catch (e) { /* noop */ } return; }
+  if (DIAG_NOPASS) { try { setMouseIgnore(false); } catch (e) { /* noop */ } return; }
+  if (DIAG_ALWAYSPASS) { try { setMouseIgnore(true); } catch (e) { /* noop */ } return; }
   try {
     // ⚠️ 去抖策略（用户实测：光标经过/交互时，正在播放的视频会黑屏——穿透状态频繁切换会
     // 让 DWM 反复重排合成路径，破坏其它程序的视频硬件叠加层）：
@@ -403,10 +413,7 @@ function applyMouseIgnore(inside, cx, cy, why) {
     //   · 离开可交互区域 → 延迟 500ms 再恢复穿透（避免贴着边缘来回抖动导致反复切换）
     if (inside) {
       if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-      if (lastIgnoreApplied !== false) {
-        win.setIgnoreMouseEvents(false, { forward: true });
-        lastIgnoreApplied = false;
-      }
+      if (lastIgnoreApplied !== false) setMouseIgnore(false);
     } else {
       if (lastIgnoreApplied === true) return;         // 已经是穿透态：无需重复设置
       if (leaveTimer) return;                          // 已有延迟任务
@@ -414,7 +421,7 @@ function applyMouseIgnore(inside, cx, cy, why) {
         leaveTimer = null;
         if (mousePollInside) return;                   // 期间又回到可交互区域 → 取消
         try {
-          if (win && !win.isDestroyed()) { win.setIgnoreMouseEvents(true, { forward: true }); lastIgnoreApplied = true; }
+          setMouseIgnore(true);
         } catch (e) { /* noop */ }
       }, 500);
     }
@@ -657,7 +664,7 @@ function createWindow() {
 
   // 桌面版：默认整窗点击穿透；**穿透状态由主进程鼠标轮询统一裁决**（不依赖 renderer 的 mousemove——
   // 被其他窗口覆盖/被 SetCapture（QQ 截图等）接管时窗口收不到鼠标消息会永久死锁，用户实测）
-  win.setIgnoreMouseEvents(true, { forward: true });
+  setMouseIgnore(true);
   startMousePoll();
   startOcclusionWatch();
   // 显示器插拔 / 分辨率或缩放变化 → 重新贴合"所有显示器并集"（多屏扩展支持）
@@ -679,8 +686,14 @@ function createWindow() {
   win.once('ready-to-show', () => win.showInactive());   // 不抢焦点（桌面不会因点击桌宠而停摆）
   win.on('closed', () => { win = null; });
   // 窗口重新显示时：重置穿透状态并通知 renderer 放行（修复 hide/show 后拖不动/点不了的 bug）
+  // ⚠️ 必须经 setMouseIgnore 同步缓存。macOS 上窗口被完全遮挡后重新露出也会触发 'show'
+  //    （切全屏应用/桌面空间、调度中心、锁屏返回等；未置顶时尤其频繁）。此前这里直接设穿透、
+  //    缓存却仍是"可交互"：右键菜单开着时菜单可见但点不动，点外部也关不掉，只能重启。
+  //    清空 mousePollInside：菜单开着时 inside 恒为 true、不会"变化"，轮询只能等 ~3s 的强制
+  //    重下发；清空后下一轮轮询（≤70ms）即视为变化，立即按实际情况恢复可交互。
   win.on('show', () => {
-    win.setIgnoreMouseEvents(true, { forward: true });
+    setMouseIgnore(true);
+    mousePollInside = null;
     if (win && win.webContents) win.webContents.send('main-shown');
   });
 
@@ -1126,8 +1139,7 @@ app.whenReady().then(() => {
   });
   // 鼠标穿透切换：**已由主进程轮询统一裁决**（见 mousePollTick）；此 IPC 保留作兼容/手动覆盖
   ipcMain.on('set-mouse-ignore', (e, ignore) => {
-    if (!win || win.isDestroyed()) return;
-    win.setIgnoreMouseEvents(!!ignore, { forward: true });
+    setMouseIgnore(ignore);
   });
   // renderer 上报"可交互矩形"（角色 bbox + 打开的浮层）→ 主进程轮询裁决穿透；同时上报鼠标事件计数（心跳）
   ipcMain.on('hit-rects', (e, payload) => {
