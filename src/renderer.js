@@ -1424,7 +1424,9 @@
   let topmostOn = true;
   try { topmostOn = localStorage.getItem('QX_TOPMOST') !== '0'; } catch (e) { /* noop */ }
   function refreshCtxMenu() {
-    ctxLockItem.textContent = idolLocked ? '🔒 锁定（禁止拖动）' : '🔓 取消锁定（允许拖动）';
+    // 与重力/置顶统一为「名称：开/关（说明）」的状态式写法。旧文案未锁时显示「取消锁定」，
+    // 读起来像动作，点下去却是上锁，与字面相反。
+    ctxLockItem.textContent = idolLocked ? '🔒 锁定：开（禁止拖动）' : '🔓 锁定：关（可拖动）';
     ctxGravityItem.textContent = gravityOn ? '🌍 重力：开（落地+可甩飞）' : '🌍 重力：关（悬浮走动）';
     if (ctxTopmostItem) ctxTopmostItem.textContent = topmostOn ? '📌 保持置顶：开' : '📌 保持置顶：关';
     const hasRole = !!ctxRole;
