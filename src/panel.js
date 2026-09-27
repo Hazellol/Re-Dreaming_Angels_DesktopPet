@@ -374,10 +374,30 @@
       const c = await dk.uiConfigGet();
       if (!c) return;
       if (ttsEl('ui-region')) ttsEl('ui-region').checked = c.regionEnabled !== false;
+      const f = c.fix || {};
+      if (ttsEl('ui-fix-nodcompfeature')) ttsEl('ui-fix-nodcompfeature').checked = f.noDcompFeature === true;
+      if (ttsEl('ui-fix-nodcompswitch')) ttsEl('ui-fix-nodcompswitch').checked = f.noDcompSwitch === true;
+      if (ttsEl('ui-fix-disablegpu')) ttsEl('ui-fix-disablegpu').checked = f.disableGpu === true;
+      const fa = c.fixActive || {};
+      const pendingRestart = f.noDcompFeature !== fa.noDcompFeature
+        || f.noDcompSwitch !== fa.noDcompSwitch
+        || f.disableGpu !== fa.disableGpu;
       const hint = ttsEl('ui-region-hint');
       if (hint) {
         let extra = '';
         if (!c.regionAvailable) extra = '（当前环境不支持该功能，已自动忽略）';
+        // 系统「透明效果」关闭 → 透明窗口会整块变黑；此时"区域裁剪"反而是唯一可用的外观（只显示角色）
+        if (c.sysTransparency === false) {
+          extra += '\n\n⚠ 检测到系统「透明效果」已关闭：桌宠窗口会显示为黑色块。'
+            + '请到「设置 → 个性化 → 颜色 → 透明效果」开启后重启桌宠；'
+            + '在开启之前，请保持此处「窗口区域裁剪」为开启状态，否则会整窗全黑。';
+        } else if (c.sysTransparency === true) {
+          extra += '\n\n系统「透明效果」：已开启（正常）';
+        }
+        if (pendingRestart) {
+          extra += '\n\n⚠ 显示兼容开关有改动尚未生效，请完全退出并重新打开桌宠（仅关窗口不算）。';
+        }
+        hint.style.whiteSpace = 'pre-wrap';
         hint.textContent = '若角色周围出现黑色矩形块，可关闭此项后重启软件：该现象由窗口形状裁剪在部分显卡 / 驱动 / 系统设置下引起；关闭的代价是可能重现「播放视频时窗口黑屏」。' + extra;
       }
     } catch (e) { /* noop */ }
@@ -390,6 +410,57 @@
         ? '已开启窗口区域裁剪，重启软件后生效。'
         : '已关闭窗口区域裁剪，重启软件后生效。\n\n关闭后角色周围的黑色矩形块应消失；若播放视频时出现黑屏，说明该环境仍需它，可以再打开。');
     } catch (e) { /* noop */ }
+  });
+  // 显示兼容：排查开关（重启生效）+ 打开配置目录
+  // fileKey 为写入配置文件用的键名（带 fix 前缀，与 main.js 的读取键名保持一致）；
+  // readKey 为 ui-config-get 返回的 fix 对象里的字段名。写入后必须回读校验，
+  // 否则一旦键名写错，界面照样提示「已保存」，用户却永远等不到生效。
+  const fixBind = [['ui-fix-nodcompfeature', 'fixNoDcompFeature', 'noDcompFeature'], ['ui-fix-nodcompswitch', 'fixNoDcompSwitch', 'noDcompSwitch'], ['ui-fix-disablegpu', 'fixDisableGpu', 'disableGpu']];
+  for (const [id, fileKey, readKey] of fixBind) {
+    if (!ttsEl(id)) continue;
+    ttsEl(id).addEventListener('change', async () => {
+      const on = ttsEl(id).checked;
+      try {
+        await dk.uiConfigSet({ [fileKey]: on });
+        const c = await dk.uiConfigGet();          // 回读磁盘上的真实结果
+        const saved = c && c.fix ? c.fix[readKey] : undefined;
+        if (saved === on) {
+          alert('已保存并写入配置，重启桌宠后生效。');
+        } else {
+          ttsEl(id).checked = !on;
+          alert('写入校验失败：配置文件里仍是旧值。\n请把这条日志发给开发者：\nuiConfigSet ' + fileKey + '=' + on
+            + ' 回读=' + String(saved) + '\n文件：' + ((c && c.configFile) || '未知'));
+        }
+      } catch (e) { /* noop */ }
+    });
+  }
+  if (ttsEl('ui-open-config')) ttsEl('ui-open-config').addEventListener('click', async () => {
+    try {
+      const c = await dk.uiConfigGet();
+      if (c && c.configFile) dk.openExternal('file:///' + String(c.configFile).replace(/\\/g, '/'));
+    } catch (e) { /* noop */ }
+  });
+  if (ttsEl('ui-open-logs')) ttsEl('ui-open-logs').addEventListener('click', async () => {
+    try { await dk.ttsOpenLogs(); } catch (e) { /* noop */ }
+  });
+  if (ttsEl('ui-copy-diag')) ttsEl('ui-copy-diag').addEventListener('click', async () => {
+    const btn = ttsEl('ui-copy-diag');
+    const old = btn ? btn.textContent : '';
+    try {
+      const text = await dk.uiDiagText();
+      if (!text) throw new Error('empty');
+      await navigator.clipboard.writeText(text);
+      if (btn) btn.textContent = '✅ 已复制，粘贴给开发者';
+    } catch (e) {
+      // 剪贴板 API 不可用时降级：把文本塞进 hint 让用户手动选择复制
+      try {
+        const text = await dk.uiDiagText();
+        const hint = ttsEl('ui-region-hint');
+        if (hint) { hint.style.whiteSpace = 'pre-wrap'; hint.textContent = text; }
+        if (btn) btn.textContent = '⚠ 请手动复制下方内容';
+      } catch (e2) { if (btn) btn.textContent = '⚠ 复制失败'; }
+    }
+    setTimeout(() => { if (btn && old) btn.textContent = old; }, 2500);
   });
   refreshUiCfg();
 

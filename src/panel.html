@@ -496,7 +496,15 @@
           </div>
           <div class="ai-btns" style="margin-top:6px;">
             <button class="ai-btn small" id="ui-open-config">📂 打开配置目录</button>
+            <button class="ai-btn small" id="ui-open-logs">📂 打开日志文件</button>
+            <button class="ai-btn small" id="ui-copy-diag">📋 复制诊断信息</button>
           </div>
+          <div class="ai-hint" style="margin-top:10px;">
+            <strong>窗口显示异常排查</strong>（整块变黑 / 角色周围黑块）：以下开关默认关闭，<strong>改完需重启桌宠</strong>；若透明窗口在个别显卡驱动上失效，可逐个尝试。
+          </div>
+          <div class="ai-row check"><label>保留视频叠加特性</label><input type="checkbox" id="ui-fix-nodcompfeature"><span class="ai-hint">不禁用 DirectComposition 视频叠加</span></div>
+          <div class="ai-row check"><label>保留 DComp 开关</label><input type="checkbox" id="ui-fix-nodcompswitch"><span class="ai-hint">不追加 --disable-direct-composition-video-overlays</span></div>
+          <div class="ai-row check"><label>关闭硬件加速</label><input type="checkbox" id="ui-fix-disablegpu"><span class="ai-hint">改用软件合成（更稳但更耗 CPU）</span></div>
         </div>
         <div class="ai-card">
           <h3>🖥 多显示器</h3>

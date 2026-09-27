@@ -834,7 +834,7 @@ function createTtsManager(ctx) {
     });
   }
 
-  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, dataRoot, cacheDir: () => cacheDir, installFromUrl, installState: () => installState, checkUpdate };
+  return { register, synthesize, status, probe, startService, stopService, save, config: () => cfg, voicesRoot, dataRoot, cacheDir: () => cacheDir, installFromUrl, installState: () => installState, checkUpdate, logInfo: (m) => logLine('INFO', m) };
 }
 
 module.exports = { createTtsManager, DEFAULT_CONFIG };

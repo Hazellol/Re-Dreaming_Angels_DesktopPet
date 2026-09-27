@@ -197,6 +197,7 @@ contextBridge.exposeInMainWorld('deskpet', {
   ttsPick: (kind) => ipcRenderer.invoke('tts-pick', kind),
   uiConfigGet: () => ipcRenderer.invoke('ui-config-get'),
   uiConfigSet: (patch) => ipcRenderer.invoke('ui-config-set', patch),
+  uiDiagText: () => ipcRenderer.invoke('ui-diag-text'),
   ttsUrls: () => ipcRenderer.invoke('tts-urls'),
   ttsCheckUpdate: () => ipcRenderer.invoke('tts-check-update'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

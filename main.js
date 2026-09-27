@@ -99,17 +99,46 @@ const DISABLED_FEATURES = [
   // 透明桌宠窗口被提到视频窗口之上时，Windows 的视频硬件 overlay 会被破坏 → 视频黑屏
   // （点击桌宠外才恢复）。禁用 overlay 后视频走普通 GPU 合成路径，不再被我们的透明窗口干扰。
   'DirectCompositionVideoOverlays'
-].join(',');
-try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES); } catch (e) { /* noop */ }
+];
+// ===== 显示兼容开关（控制台「显示兼容」可切换，重启生效）=====
+// 背景：用户反馈 Win11 + RTX 4060 上"角色周围黑块 / 关掉区域裁剪后整窗全黑"，
+//       即该机器上窗口透明合成未生效。为便于远程排查，提供三个开关（默认关闭）：
+//   fixNoDcompFeature : 不禁用 DirectCompositionVideoOverlays 特性
+//   fixNoDcompSwitch  : 不追加 --disable-direct-composition-video-overlays
+//   fixDisableGpu     : 关闭硬件加速（软件合成，透明窗口在部分驱动下更稳）
+// 就地读取配置文件（uiCfg 变量在下方才声明，此处必须先读，因为命令行开关要求尽早设置）
+// parseUiCfgText 会剥掉 UTF-8 BOM：用户用记事本/其他编辑器手改该文件时很容易带上 BOM，
+// 而 JSON.parse 遇到 BOM 会直接抛错，导致整份配置被当成空对象静默忽略。
+function parseUiCfgText(txt) {
+  return JSON.parse(String(txt).replace(/^\uFEFF/, '')) || {};
+}
+let _earlyUiCfgErr = '';
+const _earlyUiCfg = (() => {
+  try { return UI_CFG_FILE ? parseUiCfgText(require('fs').readFileSync(UI_CFG_FILE, 'utf8')) : {}; } catch (e) { _earlyUiCfgErr = String(e && e.message); return {}; }
+})();
+// 注意：这里同时接受带 fix 前缀与不带前缀两种键名。
+// 历史原因：控制台面板曾写入不带前缀的裸名（noDcompFeature…），而此处按带前缀读取，
+// 导致用户勾选后重启完全不生效（v1.1.2 用户排查时「四个开关组合日志完全一致」的根因）。
+// 保留双键名兼容，避免旧配置文件失效。
+const FIX = {
+  noDcompFeature: _earlyUiCfg.fixNoDcompFeature === true || _earlyUiCfg.noDcompFeature === true,
+  noDcompSwitch: _earlyUiCfg.fixNoDcompSwitch === true || _earlyUiCfg.noDcompSwitch === true,
+  disableGpu: _earlyUiCfg.fixDisableGpu === true || _earlyUiCfg.disableGpu === true
+};
+if (FIX.disableGpu) { try { app.disableHardwareAcceleration(); } catch (e) { /* noop */ } }
+const DISABLED_FEATURES_STR = DISABLED_FEATURES.filter((f) => !(FIX.noDcompFeature && f === 'DirectCompositionVideoOverlays')).join(',');
+try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES_STR); } catch (e) { /* noop */ }
 // 视频叠加层开关（同上，双保险：部分 Chromium 版本用命令行开关而非 feature 名）
-try { app.commandLine.appendSwitch('disable-direct-composition-video-overlays'); } catch (e) { /* noop */ }
+if (!FIX.noDcompSwitch) {
+  try { app.commandLine.appendSwitch('disable-direct-composition-video-overlays'); } catch (e) { /* noop */ }
+}
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
 // 降低峰值常驻内存（桌宠主要是贴图/GPU 占用，不在 V8 堆里，所以此值留足余量即可）。
 try { app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc'); } catch (e) { /* noop */ }
 
 // ===== UI 配置（窗口区域裁剪开关等；控制台可改，重启生效）=====
 function readUiCfg() {
-  try { return UI_CFG_FILE ? (JSON.parse(require('fs').readFileSync(UI_CFG_FILE, 'utf8')) || {}) : {}; } catch (e) { return {}; }
+  try { return UI_CFG_FILE ? parseUiCfgText(require('fs').readFileSync(UI_CFG_FILE, 'utf8')) : {}; } catch (e) { return {}; }
 }
 function writeUiCfg(patch) {
   const next = Object.assign({}, readUiCfg(), patch || {});
@@ -117,32 +146,105 @@ function writeUiCfg(patch) {
   uiCfg = next;
   return next;
 }
+// 从配置文件实时解析显示兼容开关（键名兼容：fix* 与裸名）
+function currentFixFromFile() {
+  const c = readUiCfg();
+  return {
+    noDcompFeature: c.fixNoDcompFeature === true || c.noDcompFeature === true,
+    noDcompSwitch: c.fixNoDcompSwitch === true || c.noDcompSwitch === true,
+    disableGpu: c.fixDisableGpu === true || c.disableGpu === true
+  };
+}
 ipcMain.handle('ui-config-get', () => ({
   regionEnabled: uiCfg.regionEnabled !== false,   // 用户设置（下次启动生效）
   regionActive: USE_REGION,                       // 本次启动是否真正启用了区域裁剪
   regionAvailable: !!regionApi,                   // koffi / Win32 是否可用
-  configFile: UI_CFG_FILE
+  configFile: UI_CFG_FILE,
+  sysTransparency,                                // 系统「透明效果」：true/false/null
+  transparentSupported: !IS_WIN ? null : sysTransparency !== false,
+  fix: currentFixFromFile(),                      // 配置文件里已保存的值（重启后生效）
+  fixActive: FIX                                  // 本次运行实际生效的值
 }));
 ipcMain.handle('ui-config-set', (e, patch) => { writeUiCfg(patch); return { ok: true, restartRequired: true }; });
-// 系统"透明效果"检测：关闭时透明窗口会被填成黑色（用户反馈的"黑边"成因之一）
+// 控制台「复制诊断信息」：把同一份环境诊断文本交给渲染进程复制到剪贴板
+ipcMain.handle('ui-diag-text', async () => { try { return await buildDiagnosticText(); } catch (e) { return ''; } });
+// 系统"透明效果"检测：关闭时透明窗口会被整块填成黑色（用户反馈"黑边 → 关掉区域裁剪后全黑"的根因）
+// 结果同时写入 tts/logs/app.log，便于用户回传诊断
+let sysTransparency = null;   // null=未检测 / true=开启 / false=关闭
 function checkSystemTransparency() {
   if (!IS_WIN) return;
   try {
     const { execFile } = require('child_process');
     execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'EnableTransparency'],
       { windowsHide: true, timeout: 4000 }, (err, so) => {
-        if (err) return;
+        if (err) { sysTransparency = null; return; }
         const m = /EnableTransparency\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(so || '');
-        if (m && parseInt(m[1], 16) === 0) {
-          console.log('[TRANSPARENCY] ⚠ 系统"透明效果"已关闭 → 透明窗口可能显示为黑色块；建议在「设置 → 个性化 → 颜色」中开启"透明效果"');
-        } else {
-          console.log('[TRANSPARENCY] 系统透明效果：已开启');
-        }
+        sysTransparency = !(m && parseInt(m[1], 16) === 0);
+        const msg = sysTransparency
+          ? '透明效果检查：系统「透明效果」已开启（正常）'
+          : '透明效果检查：⚠ 系统「透明效果」已关闭 —— 这会让桌宠窗口显示为黑色块（黑边甚至全黑）。请到「设置 → 个性化 → 颜色 → 透明效果」开启后重启桌宠';
+        console.log('[TRANSPARENCY]', msg);
+        try { if (tts && tts.logInfo) tts.logInfo(msg); } catch (e) { /* noop */ }
       });
   } catch (e) { /* noop */ }
 }
-// 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）
-app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
+// ===== 环境诊断（写入 tts/logs/app.log，便于用户回传排查"窗口黑块 / 透明失效"）=====
+// 拆成「生成文本」+「写日志」两步：控制台可以直接把同一份文本复制给开发者，
+// 省掉「让用户找日志文件再回传」这一步。
+async function buildDiagnosticText() {
+  const os = require('os');
+  const L = [];
+  {
+    L.push('===== 环境诊断 =====');
+    L.push('系统: ' + os.type() + ' ' + os.release() + ' (' + os.arch() + ')');
+    L.push('Electron ' + process.versions.electron + ' / Chromium ' + process.versions.chrome + ' / Node ' + process.versions.node);
+    L.push('打包版: ' + app.isPackaged);
+    L.push('系统透明效果(注册表 EnableTransparency): ' + String(sysTransparency));
+    L.push('显示兼容开关(本次生效): ' + JSON.stringify(FIX));
+    L.push('显示兼容开关(文件中已保存): ' + JSON.stringify(currentFixFromFile()));
+    L.push('窗口区域裁剪: ' + (USE_REGION ? '启用' : '关闭'));
+    L.push('主窗口: transparent=true, frame=false, hasShadow=false, resizable=false');
+    L.push('命令行: ' + process.argv.slice(1).join(' '));
+    try {
+      const raw = UI_CFG_FILE ? require('fs').readFileSync(UI_CFG_FILE, 'utf8') : '(无路径)';
+      L.push('ui_config.json 内容: ' + String(raw).replace(/\s+/g, ' ').slice(0, 300));
+    } catch (e) { L.push('ui_config.json 读取失败: ' + (e && e.message)); }
+    if (_earlyUiCfgErr) L.push('ui_config.json 解析失败: ' + _earlyUiCfgErr);
+    try { L.push('disable-features: ' + DISABLED_FEATURES_STR); } catch (e) { /* noop */ }
+    try {
+      L.push('--disable-direct-composition-video-overlays: ' + app.commandLine.hasSwitch('disable-direct-composition-video-overlays'));
+    } catch (e) { /* noop */ }
+    try { L.push('硬件加速: ' + (FIX.disableGpu ? '已关闭(软件合成)' : '启用')); } catch (e) { /* noop */ }
+    try {
+      const g = await app.getGPUInfo('complete');   // basic 不含 auxAttributes，complete 才能拿到显卡型号/驱动
+      const a = (g && g.auxAttributes) || {};
+      L.push('GPU 厂商: ' + (a.glVendor || '?'));
+      L.push('GPU 渲染器: ' + (a.glRenderer || '?'));
+      L.push('GPU 驱动版本: ' + (a.glVersion || '?'));
+      if (a.glResetStatus !== undefined) L.push('GPU 重置状态: ' + a.glResetStatus);
+    } catch (e) { L.push('GPU 信息获取失败: ' + (e && e.message)); }
+    try { L.push('GPU 特性状态: ' + JSON.stringify(app.getGPUFeatureStatus())); } catch (e) { /* noop */ }
+    try {
+      if (win && !win.isDestroyed()) {
+        const b = win.getBounds();
+        L.push('窗口: ' + b.width + 'x' + b.height + '@' + b.x + ',' + b.y);
+      }
+    } catch (e) { /* noop */ }
+    L.push('=====================');
+  }
+  return L.join('\n');
+}
+async function collectDiagnostics() {
+  try {
+    const text = await buildDiagnosticText();
+    for (const line of text.split('\n')) {
+      console.log('[DIAG]', line);
+      try { if (tts && tts.logInfo) tts.logInfo('[诊断] ' + line); } catch (e) { /* noop */ }
+    }
+  } catch (e) { /* noop */ }
+}
+
+// 任务栏图标规范：AppUserModelId 保证任务栏/窗口显示正确的应用图标（不回归默认图标）app.setAppUserModelId('com.master.re-dreaming-angels-desktop-pet');
 app.on('second-instance', () => {
   if (panel && !panel.isDestroyed()) panel.show();
   else ensurePanel();
@@ -697,8 +799,7 @@ function createWindow() {
   }
   win = new BrowserWindow({
     x, y, width, height,
-    transparent: true,
-    backgroundColor: '#00000000',   // 显式全透明：避免个别驱动下取默认背景色（黑/白）填充未绘制区域
+    transparent: true,   // 透明窗口（不额外设置 backgroundColor：部分驱动/版本下显式背景色反而会破坏透明）
     frame: false,
     resizable: false,
     movable: false,
@@ -934,7 +1035,8 @@ app.whenReady().then(() => {
     }
   } catch (e) { console.error('[TTS] init failed', e); }
   createWindow();
-  checkSystemTransparency();   // 检测系统"透明效果"：关闭时透明窗口会被填成黑色（用户反馈的"黑边"成因之一）
+  checkSystemTransparency();   // 检测系统「透明效果」：关闭时透明窗口会被填成黑色（黑边 / 全黑成因之一）
+  setTimeout(() => { collectDiagnostics(); }, 3000);   // 环境诊断写入日志（GPU / 系统 / 开关状态）
   // ⚠️ 控制台改为**按需创建**（懒加载）：它曾是常驻的独立渲染进程（≈100MB+），
   // 用户反馈内存占用高 → 启动不创建，从托盘/右键菜单打开时才建，关闭即销毁。
 
