@@ -138,6 +138,483 @@
     font: 700 13px/1 "Microsoft YaHei", sans-serif;
     min-width: 38px; text-align: right;
   }
+  /* 浮空提示：从角色头顶向上冒出、边升边淡出（纯过场字，不是气泡对话框） */
+  .float-tip {
+    position: fixed; z-index: 60; pointer-events: none;
+    font: 800 15px/1 "Microsoft YaHei", sans-serif;
+    color: #fff; white-space: nowrap;
+    background: linear-gradient(135deg, #f06aa8, #d0408a);
+    padding: 6px 13px; border-radius: 999px;
+    text-shadow: 0 1px 3px rgba(90, 40, 70, .45);
+    box-shadow: 0 4px 14px rgba(208, 64, 138, .38);
+    animation: floatUp 1.5s cubic-bezier(.2, .8, .3, 1) forwards;
+  }
+  .float-tip.unlock { background: linear-gradient(135deg, #4cc38a, #2e9e6b); box-shadow: 0 4px 14px rgba(46, 158, 107, .38); }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translate(-50%, 10px) scale(.8); }
+    16%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+    30%  { transform: translate(-50%, -8px) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -58px) scale(.95); }
+  }
+
+  /* ================= 番茄钟（桌面小组件） =================
+     机身贴图 772x1146（已去挂绳，屏幕区镂空）；屏幕内区 = 面板 11.92% 起、宽 56.22%、高 78.8%
+     ⚠️ 计时态所有元素一律以"屏幕中心 40.03%"对齐，不是面板 50%（否则整体偏右） */
+  #pomodoro-panel {
+    position: fixed; left: 0; top: 0; width: 516px;
+    z-index: 32; display: none; user-select: none; color: #2c4a50;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+    transform-origin: top left;
+  }
+  /* 入场/离场：用独立 scale 属性（transform 已被"调整大小"占用，两者可叠加） */
+  #pomodoro-panel.pomo-in { animation: pomoScaleIn 400ms cubic-bezier(.16, 1, .3, 1) both; }
+  #pomodoro-panel.pomo-out { animation: pomoScaleOut 300ms cubic-bezier(.4, 0, 1, 1) both; }
+  @keyframes pomoScaleIn { from { opacity: 0; scale: .9; } to { opacity: 1; scale: 1; } }
+  @keyframes pomoScaleOut { from { opacity: 1; scale: 1; } to { opacity: 0; scale: .85; } }
+  .pomo-stage {
+    position: relative; width: 100%; aspect-ratio: 772 / 1146;
+    cursor: grab;
+  }
+  /* ⚠️ 贴图必须单独成层、压在屏底之上：屏底为了补缝会铺出内腔一点，
+     若屏底在上层就会把机身边框盖掉（用户实测）。层级：屏底 0 → 贴图 1 → UI 2/3 */
+  .pomo-stage::before {
+    content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: url('../assets/pomodoro/device.png') center / 100% 100% no-repeat;
+  }
+  .pomo-stage:active { cursor: grabbing; }
+  .pomo-stage.phase-in .pomo-screen { animation: pomoFlash .55s ease; }
+  @keyframes pomoFlash {
+    0%, 100% { box-shadow: none; }
+    45% { box-shadow: inset 0 0 46px 10px rgba(255, 255, 255, .5); }
+  }
+  /* 屏底：主人指定的纯色深蓝；内腔上圆角实测仅约 9 源像素 → 只能给 6px */
+  .pomo-screen {
+    /* 实测内腔是 11.92%/13.96% 56.22%x78.8%，但贴图的机身边框内侧还有一圈浅色描边，
+       照实测值铺会露一条缝（能看到屏幕后的画面）→ 四周各撑开：横向 ±1.5%、纵向 ±0.8% */
+    position: absolute; left: 10.4%; top: 13.2%; width: 59.3%; height: 80.4%;
+    border-radius: 6px; overflow: hidden; z-index: 0;
+    background: #1d2539;
+  }
+  /* 电子流体已按要求改成"普通透明液体"：一层通透渐变 + 顶面波浪 */
+  .pomo-fluid {
+    position: absolute; left: 0; right: 0; bottom: 0; top: 0; z-index: 1;
+    transform-origin: 50% 100%; transform: scaleY(0);
+    transition: transform .5s linear, background .8s ease;
+    background: linear-gradient(180deg, rgba(255, 178, 210, .4), rgba(255, 108, 168, .62));
+  }
+  .pomo-fluid.rest { background: linear-gradient(180deg, rgba(158, 244, 218, .4), rgba(64, 198, 168, .62)); }
+  .pomo-fluid i {
+    position: absolute; left: -16%; right: -16%; top: -3px; height: 12px;
+    background: rgba(255, 255, 255, .5); border-radius: 50%;
+    animation: pomoWave 3.4s ease-in-out infinite;
+  }
+  .pomo-fluid i::after {
+    content: ''; position: absolute; left: 47%; top: 6px; width: 6px; height: 6px;
+    background: rgba(255, 255, 255, .75); border-radius: 50%;
+    animation: pomoDrip 1.7s linear infinite;
+  }
+  @keyframes pomoWave {
+    0%, 100% { transform: translateX(-3%) scaleY(1); }
+    50% { transform: translateX(3%) scaleY(.7); }
+  }
+  @keyframes pomoDrip {
+    0% { transform: translateY(0) scale(.5); opacity: 0; }
+    20% { opacity: .9; }
+    100% { transform: translateY(46px) scale(1); opacity: 0; }
+  }
+  /* ---------- 计时态 ---------- */
+  .pomo-timer {
+    position: absolute; left: 40.03%; top: 26.5%; transform: translate(-50%, -50%);
+    width: 44.4%; height: 18%; z-index: 3;
+    opacity: 0; pointer-events: none;
+    transition: translate .5s cubic-bezier(.3, .9, .3, 1), scale .5s cubic-bezier(.3, .9, .3, 1), opacity .38s ease;
+  }
+  .pomo-stage.running .pomo-timer { opacity: 1; pointer-events: auto; }
+  .pt-nums { position: absolute; inset: 0; padding: 8px 0 0; box-sizing: border-box;
+             display: flex; align-items: center; justify-content: center; gap: 4px; }
+  /* 单位在上、数字在下；给同样的底部留白 → 数字正好落在框的正中心 */
+  .pt-g { display: flex; flex-direction: column; align-items: center; padding-bottom: 18px; box-sizing: border-box; }
+  .pt-g > b {
+    height: 18px; box-sizing: border-box;
+    font: 700 14px/1 "Microsoft YaHei", sans-serif; color: #9fe6d0; letter-spacing: 2px;
+  }
+  .pt-g > span {
+    font: 800 54px/1 Consolas, "Microsoft YaHei", monospace; color: #fff;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, .5); font-variant-numeric: tabular-nums;
+  }
+  .pt-c {
+    align-self: center; height: 54px; display: flex; align-items: center; box-sizing: border-box;
+    font: 800 48px/1 Consolas, monospace; color: #fff; text-shadow: 0 2px 14px rgba(0, 0, 0, .5);
+  }
+  /* 彩虹进度框：左↓ → 下→ → 右↑ → 上← 依次绘制；每秒更新 scale，用 ~1s 线性过渡接起来 → 丝滑回退 */
+  .ptseg {
+    position: absolute; background: linear-gradient(180deg, #ff9ec4, #ffd08a, #9fe6d0, #8fd0ff, #c9a7ff);
+    box-shadow: 0 0 10px rgba(170, 225, 255, .6); border-radius: 3px;
+    transition: transform 1.05s linear;
+  }
+  .ptseg.l { left: 0; top: 0; width: 6px; height: 100%; transform-origin: 50% 0%; }
+  .ptseg.b { left: 0; bottom: 0; width: 100%; height: 6px; transform-origin: 0% 50%;
+             background: linear-gradient(90deg, #c9a7ff, #ff9ec4, #ffd08a, #9fe6d0, #8fd0ff); }
+  .ptseg.r { right: 0; top: 0; width: 6px; height: 100%; transform-origin: 50% 100%;
+             background: linear-gradient(0deg, #8fd0ff, #c9a7ff, #ff9ec4, #ffd08a, #9fe6d0); }
+  .ptseg.t { left: 0; top: 0; width: 100%; height: 6px; transform-origin: 100% 50%;
+             background: linear-gradient(270deg, #9fe6d0, #8fd0ff, #c9a7ff, #ff9ec4, #ffd08a); }
+  .pomo-round {
+    position: absolute; left: 40.03%; top: 41%; transform: translate(-50%, -50%);
+    z-index: 3; white-space: nowrap; opacity: 0; pointer-events: none;
+    font: 700 19px/1.5 "Microsoft YaHei", sans-serif; color: #cfe0e8;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, .45);
+    transition: opacity .38s ease;
+  }
+  /* 不加 both：否则动画最终态会被钉死，停止时退不掉 */
+  .pomo-stage.running .pomo-round { opacity: 1; animation: pmFadeIn .6s cubic-bezier(.2, .9, .3, 1); }
+  @keyframes pmFadeIn { from { opacity: 0; translate: 0 14px; } to { opacity: 1; translate: 0 0; } }
+  .pomo-round.bump { animation: pmRoundBump .5s cubic-bezier(.2, .9, .3, 1.1); }
+  @keyframes pmRoundBump { from { opacity: .2; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
+  /* 停止钮：自下淡入；实心方块用 CSS 画（■ 字符带下沉基线，怎么调都不居中） */
+  .pomo-stop {
+    position: absolute; left: 40.03%; top: 75.4%; z-index: 3;
+    width: 64px; height: 64px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, .07);
+    border: 3px solid rgba(255, 255, 255, .5);
+    transform: translate(-50%, -50%) translateY(46px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .4s ease, transform .45s cubic-bezier(.2, .9, .3, 1), background .14s ease;
+  }
+  .pomo-stop::after { content: ''; width: 15px; height: 15px; border-radius: 2px; background: rgba(244, 250, 253, .92); }
+  .pomo-stage.running .pomo-stop { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+  .pomo-stop:hover { background: rgba(255, 255, 255, .16); }
+  .pomo-stop:active { transform: translate(-50%, -50%) scale(.93); }
+  /* 小屏状态字：双图层，新旧各播各的（同时播放、互不挤占） */
+  .pomo-state {
+    position: absolute; left: 76.94%; top: 14.66%; width: 16.84%; height: 29.49%; z-index: 3;
+    display: block; writing-mode: horizontal-tb; letter-spacing: 0;
+    font: 700 64px/1.05 "Microsoft YaHei", sans-serif; color: #e8f2f6;
+  }
+  .pomo-state .ps-layer {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1px;
+  }
+  .pomo-state .ps-layer.rainbow {
+    background: linear-gradient(270deg, #6366f1, #ec4899, #8b5cf6, #06b6d4, #6366f1);
+    background-size: 300% 300%;
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: text-gradient-flow 3s linear infinite;
+  }
+  @keyframes text-gradient-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .pomo-state .pc { display: inline-block; }
+  .pomo-state .pc.out { animation: pmCharOut .34s cubic-bezier(.5, 0, .9, .6) both; }
+  .pomo-state .pc.in { animation: pmCharIn .42s cubic-bezier(.2, .9, .3, 1.1) both; }
+  @keyframes pmCharOut { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 0 110px; } }
+  @keyframes pmCharIn { from { opacity: 0; translate: 0 -70px; } to { opacity: 1; translate: 0 0; } }
+  /* ---------- 大圆钮：流动彩虹 + 形状变形 ---------- */
+  .pomo-play {
+    position: absolute; left: 48.8%; top: 54%; transform: translate(-50%, -50%); z-index: 2;
+    width: 92px; height: 92px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: conic-gradient(from 0deg, #ff9ec4, #ffd08a, #9fe6d0, #8fd0ff, #c9a7ff, #ff9ec4);
+    color: #fff; font-size: 34px; line-height: 1;
+    text-shadow: 0 2px 6px rgba(40, 30, 60, .35);
+    box-shadow: 0 6px 18px rgba(200, 130, 200, .42), inset 0 -3px 8px rgba(120, 70, 150, .22);
+    animation: pomoHue 7s linear infinite, pomoPlayGlow 3.4s ease-in-out infinite, pomoBlobBack .55s ease both;
+    transition: translate .5s cubic-bezier(.3, .9, .3, 1), transform .12s ease;
+  }
+  .pomo-play:hover { transform: translate(-50%, -50%) scale(1.05); }
+  .pomo-play:active { transform: translate(-50%, -50%) scale(.95); }
+  /* 开始后：色相流得更快 + 形状变形（morph-shape 的 blob 关键帧）；停止时 pomoBlobBack 丝滑变回圆 */
+  .pomo-play.running {
+    animation: pomoHue 3s linear infinite, pomoPlayGlow 1.5s ease-in-out infinite, pomoMorph 8s ease-in-out infinite;
+  }
+  @keyframes pomoHue { to { filter: hue-rotate(360deg); } }
+  @keyframes pomoPlayGlow {
+    0%, 100% { box-shadow: 0 6px 18px rgba(200, 130, 200, .42), inset 0 -3px 8px rgba(120, 70, 150, .22); }
+    50% { box-shadow: 0 6px 26px 7px rgba(159, 230, 208, .45), inset 0 -3px 8px rgba(120, 70, 150, .22); }
+  }
+  @keyframes pomoMorph {
+    0%, 100% { border-radius: 40% 60% 70% 30% / 40% 30% 60% 70%; }
+    25% { border-radius: 70% 30% 50% 50% / 30% 50% 70% 40%; }
+    50% { border-radius: 60% 40% 30% 70% / 60% 70% 40% 30%; }
+    75% { border-radius: 30% 60% 60% 40% / 50% 40% 50% 60%; }
+  }
+  @keyframes pomoBlobBack {
+    from { border-radius: 40% 60% 70% 30% / 40% 30% 60% 70%; }
+    to { border-radius: 50%; }
+  }
+  /* ---------- 方向键 ---------- */
+  .pomo-dpad { position: absolute; left: 36.3%; top: 72.6%; width: 0; height: 0; z-index: 2; }
+  .pomo-dir {
+    position: absolute; left: 0; top: 0; margin: -37.5px 0 0 -37.5px;
+    width: 75px; height: 75px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    border-radius: 50%; font-size: 46px; line-height: 1; font-weight: 700;
+    color: rgba(240, 248, 252, .95);
+    background: transparent; border: 4px solid rgba(255, 255, 255, .62);
+    transition: transform .12s ease, background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .pomo-dir:hover { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .85); color: #fff; }
+  .pomo-dir:active { transform: scale(.94); }
+  .pomo-dir.up { top: -61px; }
+  .pomo-dir.down { top: 61px; }
+  .pomo-dir.left { left: -75px; }
+  .pomo-dir.right { left: 75px; }
+  /* ---------- 设置态：三行参数 ---------- */
+  /* ⚠️ 设置态容器必须"常驻"：用 display 切换的话，里面的行/箭头就没机会播滑出动画
+     （display 不可过渡 → 界面会突然消失、突然出现）。隐藏一律靠 opacity + translate。 */
+  .pomo-setup { position: absolute; inset: 0; z-index: 2; display: block; }
+  .pomo-stage.running .pomo-setup { pointer-events: none; }
+  /* 计时态的三件套在设置态整体淡出 */
+  /* 同理：设置态要把它们身上一切动画停掉（pmFadeIn / pmRoundBump 都会钉住 opacity），
+     否则停止后「第 N 轮」退不掉（用户实测） */
+  .pomo-stage.setup .pomo-timer,
+  .pomo-stage.setup .pomo-round,
+  .pomo-stage.setup .pomo-stop { opacity: 0; pointer-events: none; animation: none !important; }
+  .ps-row {
+    position: absolute; left: 18.1%; width: 40.3%; height: 46px; transform: translateY(-50%);
+    display: flex; align-items: center; box-sizing: border-box;
+    font: 700 33px/1 "Microsoft YaHei", sans-serif; color: #cfe0e8;
+    transition: color .22s ease;
+  }
+  .ps-row .ps-val {
+    position: absolute; left: 156px; margin-left: -52px; width: 104px;
+    background: transparent; border: 0; outline: none; padding: 0;
+    text-align: center; font: inherit; font-size: 42px; font-weight: 700;
+    color: #dfeaf0; font-variant-numeric: tabular-nums;
+    cursor: text; user-select: text; -webkit-user-select: text;
+    transition: color .2s ease, text-shadow .2s ease;
+  }
+  .ps-row .ps-val:hover { text-decoration: underline dotted rgba(159, 230, 208, .85); text-underline-offset: 6px; }
+  .ps-row .ps-val:focus {
+    color: #fff; text-shadow: 0 0 20px rgba(159, 230, 208, .95);
+    text-decoration: underline solid rgba(159, 230, 208, .95); text-underline-offset: 6px;
+  }
+  .ps-row.sel { color: #9fe6d0; }
+  .ps-row.sel .ps-val { color: #fff; text-shadow: 0 0 16px rgba(159, 230, 208, .8); }
+  #ps-row-focus { top: 22.6%; }
+  #ps-row-short { top: 30.9%; }
+  #ps-row-rounds { top: 38.8%; }
+  .ps-val.up { animation: psValUp .18s cubic-bezier(.2, .9, .3, 1.1); }
+  .ps-val.down { animation: psValDown .18s cubic-bezier(.2, .9, .3, 1.1); }
+  @keyframes psValUp { from { transform: translateY(9px); opacity: .25; } to { transform: none; opacity: 1; } }
+  @keyframes psValDown { from { transform: translateY(-9px); opacity: .25; } to { transform: none; opacity: 1; } }
+  .ps-arw {
+    position: absolute; width: 40px; height: 44px; margin: -22px 0 0 -20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; line-height: 1; color: #9fe6d0; pointer-events: none;
+    text-shadow: 0 0 12px rgba(159, 230, 208, .55);
+    transition: top .3s cubic-bezier(.3, .9, .3, 1);
+  }
+  .ps-arw.l { left: 35.5%; animation: psBreathL 1.7s ease-in-out infinite; }
+  .ps-arw.r { left: 61.4%; animation: psBreathR 1.7s ease-in-out infinite; }
+  @keyframes psBreathL { 0%, 100% { transform: translateX(0); opacity: .75; } 50% { transform: translateX(-6px); opacity: 1; } }
+  @keyframes psBreathR { 0%, 100% { transform: translateX(0); opacity: .75; } 50% { transform: translateX(6px); opacity: 1; } }
+  /* 开始：设置态各元素按各自方向滑出淡出（⚠️ 过渡里必须带 top，否则箭头滑动会失效） */
+  .ps-row, .ps-arw, .ps-val, .pomo-dpad {
+    transition: translate .44s cubic-bezier(.4, 0, .2, 1), opacity .38s ease, top .32s cubic-bezier(.3, .9, .3, 1);
+  }
+  .pomo-stage.running #ps-row-focus,
+  .pomo-stage.running #ps-row-short,
+  .pomo-stage.running #ps-row-rounds { translate: -66px 0; opacity: 0; pointer-events: none; }
+  /* ⚠️ 必须把呼吸动画停掉：psBreathL/R 的关键帧里写了 opacity，
+     动画优先级高于普通声明 → 只写 opacity:0 是不生效的（用户实测：开始计时后箭头不消失） */
+  .pomo-stage.running .ps-arw { animation: none; }
+  .pomo-stage.running .ps-arw.l { translate: -48px 0; opacity: 0; }
+  .pomo-stage.running .ps-arw.r { translate: 48px 0; opacity: 0; }
+  .pomo-stage.running .ps-val { translate: 74px 0; opacity: 0; pointer-events: none; }
+  .pomo-stage.running .pomo-dpad { translate: 0 120px; opacity: 0; pointer-events: none; }
+  .pomo-stage.running .pomo-play { translate: -45px 64px; }   /* → 屏幕水平中心 + 屏高 61.5% */
+  /* ---------- 番茄钟专属右键菜单 ---------- */
+  #pomo-menu {
+    position: fixed; left: 0; top: 0; min-width: 208px; display: none; z-index: 42;
+    padding: 6px; border-radius: 14px; user-select: none;
+    background: rgba(255, 255, 255, .97);
+    border: 3px solid #2f6f78;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+    color: #2f4a52; font: 500 13px/1.5 "Microsoft YaHei", sans-serif;
+    animation: popIn .17s cubic-bezier(.2,.9,.3,1.1);
+  }
+  #pomo-menu .pm-head {
+    padding: 4px 10px 6px; margin-bottom: 4px; border-bottom: 2px dashed #e2eef1;
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif; color: #3f7f8a;
+  }
+  #pomo-menu .pm-item { padding: 7px 12px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+    transition: background .12s ease, color .12s ease, transform .12s ease; }
+  #pomo-menu .pm-item:hover { background: #e2f4f7; color: #1f7f8c; transform: translateX(3px); }
+  #pomo-menu .pm-sep { height: 2px; background: #e6eff2; margin: 5px 8px; border-radius: 2px; }
+  /* ---------- 大小面板 ---------- */
+  #pomo-size {
+    position: fixed; left: 0; top: 0; width: 272px; display: none; z-index: 41;
+    padding: 12px 14px 10px; border-radius: 14px; user-select: none;
+    background: rgba(255, 255, 255, .97);
+    border: 3px solid #2f6f78;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+    color: #2f4a52; font: 500 13px/1.5 "Microsoft YaHei", sans-serif;
+    animation: popIn .17s cubic-bezier(.2,.9,.3,1.1);
+  }
+  #pomo-size .sp-head {
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; cursor: grab;
+  }
+  #pomo-size .sp-x { cursor: pointer; color: #7f9aa0; font-size: 14px; }
+  #pomo-size .sp-x:hover { color: #e0559a; }
+  #pomo-size .vp-row { display: flex; align-items: center; gap: 10px; }
+  #pomo-size .vp-mute { font-size: 17px; line-height: 1; width: 26px; text-align: center; }
+  #pomo-size .vp-val { font: 700 13px/1 "Microsoft YaHei", sans-serif; color: #1f7f8c; min-width: 46px; text-align: right; }
+  #pomo-size input[type=range] { flex: 1; min-width: 0; accent-color: #3f9fae; }
+  #pomo-size .pms-foot { display: flex; justify-content: space-between; align-items: center; padding: 6px 2px 0; }
+  #pomo-size .pms-foot > span:first-child { font: 600 11px/1.6 "Microsoft YaHei", sans-serif; color: #9fb3b8; }
+
+  /* ================= 备忘录（右键菜单 → 📝 备忘录…） =================
+     背景用主人给的素材卡（2514x1667 → 面板 620x411），内容按素材里的分区摆放：
+     顶部一条输入行 / 左侧清单 / 右侧两行编辑区 */
+  #memo-panel {
+    position: fixed; left: 0; top: 0; width: 620px; display: none; z-index: 33;
+    aspect-ratio: 2514 / 1667; user-select: none;
+    background: url('../assets/memo/card.webp') center / 100% 100% no-repeat;
+    font: 500 13px/1.5 "Microsoft YaHei", sans-serif; color: #3f3140;
+    transform-origin: top left;
+  }
+  #memo-panel.memo-in { animation: pomoScaleIn 380ms cubic-bezier(.16, 1, .3, 1) both; }
+  #memo-panel.memo-out { animation: pomoScaleOut 280ms cubic-bezier(.4, 0, 1, 1) both; }
+  .memo-title {
+    position: absolute; left: 34%; top: 10.4%; transform: translateY(-50%);
+    font: 800 19px/1 "Microsoft YaHei", sans-serif; color: #fff;
+    letter-spacing: 1px; text-shadow: 0 1px 3px rgba(140, 30, 90, .35);
+  }
+  .memo-close {
+    position: absolute; right: 3.6%; top: 10.4%; transform: translateY(-50%);
+    width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 15px; background: rgba(255, 255, 255, .18);
+    transition: background .14s ease, transform .14s ease;
+  }
+  .memo-close:hover { background: rgba(255, 255, 255, .34); transform: translateY(-50%) scale(1.08); }
+  /* 以下每个分区的 left/top/width/height 全部来自素材卡实测（见 tools/_memo-measure.js）：
+     顶部输入条 5.02%/16.35% 65%x13.65% · 左侧清单 4.07%/28% 31.94%x70.6%
+     右上深色行 36.26%/30.55% 63.66%x25.47% · 右下深色行 36.26%/56.02% 63.66%x37.9% */
+  /* 顶部输入条：**素材自带的圆角框就是输入框**，控件一律透明、只把内容放进去 */
+  .memo-add {
+    position: absolute; left: 6.3%; top: 18.4%; width: 57.3%; height: 8.4%;
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 0.8% 0 1.6%; box-sizing: border-box;
+  }
+  .memo-add input {
+    flex: 1; min-width: 0; height: 100%; padding: 0 6px; box-sizing: border-box;
+    border: 0; outline: none; background: transparent; color: #33303c;
+    font: 500 14px/1 "Microsoft YaHei", sans-serif;
+  }
+  .memo-add input::placeholder { color: #8d8d95; }
+  .memo-addbtn {
+    flex: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 18px; font-weight: 700;
+    background: linear-gradient(135deg, #f489b6, #e0559a);
+    box-shadow: 0 2px 6px rgba(224, 85, 154, .3);
+    transition: filter .14s ease, transform .1s ease;
+  }
+  .memo-addbtn:hover { filter: brightness(1.06); }
+  .memo-addbtn:active { transform: scale(.94); }
+  /* 左侧清单 */
+  .memo-list {
+    position: absolute; left: 6.3%; top: 30.3%; width: 27.8%; height: 62.7%;
+    overflow-y: auto; padding: 2.2% 1.2% 1.2% 1.2%; box-sizing: border-box;
+  }
+  .memo-list::-webkit-scrollbar { width: 6px; }
+  .memo-list::-webkit-scrollbar-thumb { background: rgba(120, 110, 120, .3); border-radius: 3px; }
+  .memo-empty { padding: 10px 6px; color: #8b8794; font-size: 12px; line-height: 1.8; }
+  .memo-item {
+    display: flex; align-items: center; gap: 6px; padding: 7px 8px; margin-bottom: 4px;
+    border-radius: 9px; cursor: pointer;
+    background: rgba(255, 255, 255, .55);
+    transition: background .14s ease, transform .14s ease;
+  }
+  .memo-item:hover { background: #fff; transform: translateX(2px); }
+  .memo-item.sel { background: #fff; box-shadow: inset 0 0 0 2px #f0a7c8; }
+  .memo-item .mi-dot {
+    flex: none; width: 15px; height: 15px; border-radius: 50%; cursor: pointer;
+    border: 2px solid #c8a6b8; box-sizing: border-box;
+    transition: background .14s ease, border-color .14s ease;
+  }
+  .memo-item.done .mi-dot { background: #f489b6; border-color: #f489b6; }
+  .memo-item .mi-txt {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px; color: #3f3140;
+  }
+  .memo-item.done .mi-txt { text-decoration: line-through; color: #a49aa6; }
+  .memo-item .mi-time { flex: none; font-size: 11px; color: #b06a90; }
+  /* 右侧编辑区（素材里那两个深色行） */
+  /* 右侧两块：同样把控件做成透明，直接落进素材"两个深色框"里 */
+  .memo-edit {
+    position: absolute; left: 38.2%; top: 41.5%; width: 56%; height: 16.1%;
+    display: flex; align-items: center; padding: 0 1.6%; box-sizing: border-box;
+  }
+  .memo-edit input {
+    width: 100%; height: 100%; padding: 0 4px; box-sizing: border-box;
+    border: 0; outline: none; background: transparent; color: #eef5f8;
+    font: 500 15px/1 "Microsoft YaHei", sans-serif;
+  }
+  .memo-edit input::placeholder { color: #8b9db0; }
+  .memo-edit input:focus { color: #fff; }
+  .memo-when {
+    position: absolute; left: 38.2%; top: 57.2%; width: 56%; height: 35%;
+    display: flex; flex-direction: column; justify-content: center; gap: 12px;
+    padding: 0 1.6%; box-sizing: border-box; color: #cfe0e8;
+  }
+  .memo-when .mw-row { display: flex; align-items: center; gap: 10px; }
+  .memo-when .mw-row > label { flex: 0 0 62px; font-size: 12px; color: #9fb6c4; }
+  .memo-when input[type=time] {
+    flex: 0 0 130px; height: 32px; padding: 0 8px; box-sizing: border-box;
+    border: 1px solid rgba(160, 180, 200, .35); border-radius: 8px; outline: none;
+    background: rgba(255, 255, 255, .1); color: #eef5f8;
+    font: 600 14px/1 "Microsoft YaHei", sans-serif;
+  }
+  .memo-when input[type=time]:focus { border-color: #9fe6d0; }
+  .memo-when .mw-hint { font-size: 11px; color: #8b9db0; }
+  .memo-btns { display: flex; gap: 8px; margin-top: 2px; }
+  .memo-btn {
+    padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px;
+    background: rgba(255, 255, 255, .12); color: #dbe7ee;
+    transition: background .14s ease, color .14s ease, transform .1s ease;
+  }
+  .memo-btn:hover { background: rgba(255, 255, 255, .22); color: #fff; }
+  .memo-btn:active { transform: scale(.96); }
+  .memo-btn.danger:hover { background: rgba(255, 120, 150, .28); color: #ffd8e4; }
+  .memo-empty-right { color: #8b9db0; font-size: 12px; }
+
+  /* 移动速度面板（沿用音量面板的样式语言；务必 display:none，否则一启动就挂在屏幕上） */
+  #speed-panel {
+    position: fixed; left: 0; top: 0;
+    width: 264px;
+    background: rgba(255,255,255,.97);
+    border: 3px solid #3f3140;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    padding: 12px 14px;
+    z-index: 30;
+    display: none;
+    user-select: none;
+    color: #3f3140;
+    font: 500 12px/1.6 "Microsoft YaHei", sans-serif;
+  }
+  #speed-panel .sp-head {
+    font: 700 13px/1.4 "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #speed-panel .sp-x { cursor: pointer; color: #b09aa8; font-size: 14px; }
+  #speed-panel .sp-x:hover { color: #e0559a; }
+  #speed-panel .vp-row { display: flex; align-items: center; gap: 10px; }
+  #speed-panel .vp-mute { font-size: 18px; line-height: 1; width: 30px; text-align: center; }
+  #speed-panel input[type=range] { flex: 1; accent-color: #e0559a; }
+  #speed-panel .vp-val {
+    font: 700 13px/1 "Microsoft YaHei", sans-serif;
+    min-width: 38px; text-align: right;
+  }
   /* 音乐播放器（可爱简约：粉渐变头 / 大圆播放钮 / 音符律动） */
   #music-panel {
     position: fixed; left: 0; top: 0;
@@ -462,7 +939,7 @@
     from { opacity: 0; transform: scale(.92) translateY(8px); }
     to   { opacity: 1; transform: scale(1) translateY(0); }
   }
-  #ctx-menu, #size-panel, #freq-panel, #vol-panel, #music-panel, #dialog {
+  #ctx-menu, #size-panel, #freq-panel, #vol-panel, #speed-panel, #music-panel, #dialog {
     animation: popIn .17s cubic-bezier(.2,.9,.3,1.1);
   }
   .cm-item { transition: background .12s ease, transform .12s ease, color .12s ease; }
@@ -696,6 +1173,102 @@
       <span class="vp-val" id="vp-bgm-val">60%</span>
     </div>
   </div>
+  <div id="speed-panel">
+    <div class="sp-head">🚶 移动速度 <span class="sp-x" id="wsp-close">✕</span></div>
+    <div class="vp-row">
+      <span class="vp-mute" title="往右拉 = 走得快">🐢</span>
+      <input type="range" id="wsp-range" min="40" max="320" step="5" value="130">
+      <span class="vp-val" id="wsp-val">130</span>
+    </div>
+    <div style="font:600 11px/1.6 'Microsoft YaHei',sans-serif;color:#b09aa8;padding:6px 2px 0;">
+      px/秒：40 很悠闲 · 130 标准 · 320 飞快（三小只共用）
+    </div>
+  </div>
+  <div id="pomodoro-panel">
+    <div class="pomo-stage" id="pomo-stage">
+      <div class="pomo-screen" id="pomo-screen"><div class="pomo-fluid" id="pomo-sand"><i></i></div></div>
+      <!-- 计时态：时间（分/秒各带头顶单位）＋ 彩虹进度框 -->
+      <div class="pomo-timer" id="pomo-timer">
+        <i class="ptseg l" id="ptseg-l"></i>
+        <i class="ptseg b" id="ptseg-b"></i>
+        <i class="ptseg r" id="ptseg-r"></i>
+        <i class="ptseg t" id="ptseg-t"></i>
+        <div class="pt-nums">
+          <span class="pt-g"><b id="pt-u1">分</b><span id="pt-v1">25</span></span>
+          <span class="pt-c">:</span>
+          <span class="pt-g"><b id="pt-u2">秒</b><span id="pt-v2">00</span></span>
+        </div>
+      </div>
+      <div class="pomo-round" id="pomo-round">第 1/4 轮</div>
+      <span class="pomo-stop" id="pomo-stop" data-nodrag title="停止并回到设置"></span>
+      <div class="pomo-state" id="pomo-state"></div>
+      <!-- 设置态：三行参数，↑↓ 选行、←→ 改值（箭头会在行间滑动） -->
+      <div class="pomo-setup" id="pomo-setup">
+        <div class="ps-row" id="ps-row-focus" data-k="focus" data-nodrag><span class="ps-label">创作</span><input class="ps-val" id="ps-focus" type="text" inputmode="numeric" maxlength="3" autocomplete="off" spellcheck="false" title="点一下可直接输入"></div>
+        <div class="ps-row" id="ps-row-short" data-k="short" data-nodrag><span class="ps-label">休息</span><input class="ps-val" id="ps-short" type="text" inputmode="numeric" maxlength="3" autocomplete="off" spellcheck="false" title="点一下可直接输入"></div>
+        <div class="ps-row" id="ps-row-rounds" data-k="rounds" data-nodrag><span class="ps-label">轮次</span><input class="ps-val" id="ps-rounds" type="text" inputmode="numeric" maxlength="3" autocomplete="off" spellcheck="false" title="点一下可直接输入"></div>
+        <span class="ps-arw l" id="ps-arw-l">◀</span>
+        <span class="ps-arw r" id="ps-arw-r">▶</span>
+      </div>
+      <span class="pomo-play" id="pomo-play" data-nodrag title="开始 / 暂停">▶</span>
+      <div class="pomo-dpad" id="pomo-dpad">
+        <span class="pomo-dir up" id="pomo-up" data-nodrag title="本阶段时长 +5 分钟（可长按）">↑</span>
+        <span class="pomo-dir down" id="pomo-down" data-nodrag title="本阶段时长 −5 分钟（可长按）">↓</span>
+        <span class="pomo-dir left" id="pomo-reset" data-nodrag title="重置本阶段">←</span>
+        <span class="pomo-dir right" id="pomo-skip" data-nodrag title="跳到下一阶段">→</span>
+      </div>
+    </div>
+  </div>
+  <!-- 番茄钟专属右键菜单（在番茄钟上右键弹出；点空白处只收菜单、不关番茄钟） -->
+  <div id="pomo-menu">
+    <div class="pm-head" id="pm-head">🍅 番茄钟</div>
+    <div class="pm-item" id="pm-toggle" data-pm="toggle">▶ 开始</div>
+    <div class="pm-item" data-pm="reset">↺ 重置本阶段</div>
+    <div class="pm-item" data-pm="skip">⏭ 跳到下一阶段</div>
+    <div class="pm-item" data-pm="size">🔍 调整大小…</div>
+    <div class="pm-item" data-pm="set">⚙ 设置时长…</div>
+    <div class="pm-sep"></div>
+    <div class="pm-item" data-pm="close">✕ 收起番茄钟</div>
+    <div class="pm-item" data-pm="quit">🚪 退出桌宠</div>
+  </div>
+  <!-- 番茄钟大小（右键菜单 → 调整大小…）：整体 scale，内部布局按百分比等比缩放 -->
+  <div id="pomo-size">
+    <div class="sp-head" id="pms-head">🍅 番茄钟大小 <span class="sp-x" id="pms-close">✕</span></div>
+    <div class="vp-row">
+      <span class="vp-mute" title="往右拉 = 变大">🔍</span>
+      <input type="range" id="pms-range" min="60" max="150" step="5" value="100">
+      <span class="vp-val" id="pms-val">100%</span>
+    </div>
+    <div class="pms-foot">
+      <span>60% 小 · 100% 默认 · 150% 大</span>
+      <span class="sp-x" id="pms-reset" style="font-size:12px;" title="恢复默认大小">恢复默认</span>
+    </div>
+  </div>
+  <!-- 备忘录：素材卡为底，顶部加输入行、左侧清单、右侧编辑区 -->
+  <div id="memo-panel">
+    <div class="memo-title">📝 备忘录</div>
+    <span class="memo-close" id="memo-close" data-nodrag title="收起">✕</span>
+    <div class="memo-add">
+      <input type="text" id="memo-input" maxlength="80" autocomplete="off" spellcheck="false" placeholder="要做什么？回车或点 + 添加">
+      <span class="memo-addbtn" id="memo-add" data-nodrag title="添加">＋</span>
+    </div>
+    <div class="memo-list" id="memo-list"></div>
+    <div class="memo-edit">
+      <input type="text" id="memo-text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="点左边一条待办，在这里改内容">
+    </div>
+    <div class="memo-when">
+      <div class="mw-row">
+        <label>提醒时间</label>
+        <input type="time" id="memo-time">
+        <span class="mw-hint" id="memo-hint">不提醒</span>
+      </div>
+      <div class="memo-btns">
+        <span class="memo-btn" id="memo-today" data-nodrag>设为今天</span>
+        <span class="memo-btn" id="memo-clear" data-nodrag>清除提醒</span>
+        <span class="memo-btn danger" id="memo-del" data-nodrag>删除这条</span>
+      </div>
+    </div>
+  </div>
   <div id="music-panel">
     <div class="sp-head"><span>🎵 音乐播放器</span> <span class="sp-x" id="mp-close">✕</span></div>
     <div class="mp-track" id="mp-track" title="点击展开/收起全部 BGM"><span class="mp-note">🎵</span><span id="mp-track-name">MainBGM (1/1)</span> <span class="mp-arrow">▾</span></div>
@@ -811,6 +1384,9 @@
     <div class="cm-sep" id="cm-sep-role" style="display:none"></div>
     <div class="cm-grid">
       <div class="cm-item" data-act="freq">🎛️ 三小只待机频率…</div>
+      <div class="cm-item" data-act="memo">📝 备忘录…</div>
+    <div class="cm-item" data-act="pomo">🍅 番茄钟…</div>
+      <div class="cm-item" data-act="speed">🚶 移动速度…</div>
       <div class="cm-item" data-act="gravity" id="cm-gravity">🌍 重力：关（悬浮走动）</div>
       <div class="cm-item" data-act="vol">🔊 音量大小…</div>
       <div class="cm-item" data-act="music">🎵 音乐播放器…</div>

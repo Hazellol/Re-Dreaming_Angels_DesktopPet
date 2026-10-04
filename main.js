@@ -101,11 +101,25 @@ const DISABLED_FEATURES = [
   'DirectCompositionVideoOverlays'
 ];
 // ===== 显示兼容开关（控制台「显示兼容」可切换，重启生效）=====
-// 背景：用户反馈 Win11 + RTX 4060 上"角色周围黑块 / 关掉区域裁剪后整窗全黑"，
-//       即该机器上窗口透明合成未生效。为便于远程排查，提供三个开关（默认关闭）：
-//   fixNoDcompFeature : 不禁用 DirectCompositionVideoOverlays 特性
-//   fixNoDcompSwitch  : 不追加 --disable-direct-composition-video-overlays
-//   fixDisableGpu     : 关闭硬件加速（软件合成，透明窗口在部分驱动下更稳）
+// 【黑块根因，2026-09 由用户端自动诊断实测确认】
+//   混合显卡笔记本（AMD 核显 + NVIDIA 独显）上，Windows 显示由核显驱动、
+//   渲染由独显承担；Chromium 走 D3D11 的 **GPU 合成** 路径时，透明窗口的 alpha
+//   在跨显卡呈现时丢失 → 透明区域被当成不透明黑色画出来（角色周围黑块；
+//   关掉窗口区域裁剪则整窗全黑）。
+//   实测 10 组对照（黑块像素占比，已剔除截图里控制台自身的干扰）：
+//     基线(区域裁剪开) 15.0% | 关区域裁剪 33.6% | 关 DirectComposition 22.7%
+//     保留 DComp 特性 22.7%  | 关 GPU 合成 **0.0%** | 关硬件加速 **0.0%**
+//     ANGLE=gl **0.0%**     | ANGLE=d3d9 **0.0%** | WARP **0.0%**
+//   → 只要绕开 GPU 合成路径即可完全消除；其中「关 GPU 合成」代价最小
+//     （GPU 特性状态显示 rasterization 仍为 enabled，2d_canvas / webgl 都还在），
+//     比直接关硬件加速轻得多。
+//   → 与之相对，「保留视频叠加特性 / 不追加 DComp 命令行开关」这两个开关当年是
+//     为黑块猜的，实测无效（仍是 22.7%），现已合并为一个仅供视频发黑时用的逃生开关。
+//
+// 开关一览（默认全部关闭）：
+//   fixNoGpuCompositing : --disable-gpu-compositing ← 黑块首选修复
+//   fixDisableGpu       : 关闭硬件加速（全部软件渲染，更彻底但更耗 CPU）
+//   fixKeepVideoOverlay : 不禁用 DirectComposition 视频叠加（仅视频发黑时用）
 // 就地读取配置文件（uiCfg 变量在下方才声明，此处必须先读，因为命令行开关要求尽早设置）
 // parseUiCfgText 会剥掉 UTF-8 BOM：用户用记事本/其他编辑器手改该文件时很容易带上 BOM，
 // 而 JSON.parse 遇到 BOM 会直接抛错，导致整份配置被当成空对象静默忽略。
@@ -118,18 +132,25 @@ const _earlyUiCfg = (() => {
 })();
 // 注意：这里同时接受带 fix 前缀与不带前缀两种键名。
 // 历史原因：控制台面板曾写入不带前缀的裸名（noDcompFeature…），而此处按带前缀读取，
-// 导致用户勾选后重启完全不生效（v1.1.2 用户排查时「四个开关组合日志完全一致」的根因）。
-// 保留双键名兼容，避免旧配置文件失效。
+// 导致用户勾选后重启完全不生效（v1.1.2 用户排查时「四个开关组合日志完全一致」的根因，
+// 用户端 ui_config.json 里那批裸键名就是物证）。保留双键名兼容，避免旧配置文件失效。
 const FIX = {
-  noDcompFeature: _earlyUiCfg.fixNoDcompFeature === true || _earlyUiCfg.noDcompFeature === true,
-  noDcompSwitch: _earlyUiCfg.fixNoDcompSwitch === true || _earlyUiCfg.noDcompSwitch === true,
-  disableGpu: _earlyUiCfg.fixDisableGpu === true || _earlyUiCfg.disableGpu === true
+  noGpuCompositing: _earlyUiCfg.fixNoGpuCompositing === true || _earlyUiCfg.noGpuCompositing === true,
+  disableGpu: _earlyUiCfg.fixDisableGpu === true || _earlyUiCfg.disableGpu === true,
+  // 旧的 fixNoDcompFeature / fixNoDcompSwitch 合并到这里（任一为真即视为开启），旧配置依然有效
+  keepVideoOverlay: _earlyUiCfg.fixKeepVideoOverlay === true || _earlyUiCfg.keepVideoOverlay === true
+    || _earlyUiCfg.fixNoDcompFeature === true || _earlyUiCfg.noDcompFeature === true
+    || _earlyUiCfg.fixNoDcompSwitch === true || _earlyUiCfg.noDcompSwitch === true
 };
+// 黑块修复：只把图层合成降级为软件，光栅化/2D/WebGL 仍走 GPU，代价远小于关硬件加速
+if (FIX.noGpuCompositing) {
+  try { app.commandLine.appendSwitch('disable-gpu-compositing'); } catch (e) { /* noop */ }
+}
 if (FIX.disableGpu) { try { app.disableHardwareAcceleration(); } catch (e) { /* noop */ } }
-const DISABLED_FEATURES_STR = DISABLED_FEATURES.filter((f) => !(FIX.noDcompFeature && f === 'DirectCompositionVideoOverlays')).join(',');
+const DISABLED_FEATURES_STR = DISABLED_FEATURES.filter((f) => !(FIX.keepVideoOverlay && f === 'DirectCompositionVideoOverlays')).join(',');
 try { app.commandLine.appendSwitch('disable-features', DISABLED_FEATURES_STR); } catch (e) { /* noop */ }
 // 视频叠加层开关（同上，双保险：部分 Chromium 版本用命令行开关而非 feature 名）
-if (!FIX.noDcompSwitch) {
+if (!FIX.keepVideoOverlay) {
   try { app.commandLine.appendSwitch('disable-direct-composition-video-overlays'); } catch (e) { /* noop */ }
 }
 // V8 堆上限（内存优化）：桌宠页面的 JS 堆远小于默认 4GB 上限，收紧到 256MB 可让 V8 更早触发 GC，
@@ -146,28 +167,84 @@ function writeUiCfg(patch) {
   uiCfg = next;
   return next;
 }
-// 从配置文件实时解析显示兼容开关（键名兼容：fix* 与裸名）
+// 从配置文件实时解析显示兼容开关（键名兼容：fix* 与裸名；旧的 DComp 双开关并入 keepVideoOverlay）
 function currentFixFromFile() {
   const c = readUiCfg();
   return {
-    noDcompFeature: c.fixNoDcompFeature === true || c.noDcompFeature === true,
-    noDcompSwitch: c.fixNoDcompSwitch === true || c.noDcompSwitch === true,
-    disableGpu: c.fixDisableGpu === true || c.disableGpu === true
+    noGpuCompositing: c.fixNoGpuCompositing === true || c.noGpuCompositing === true,
+    disableGpu: c.fixDisableGpu === true || c.disableGpu === true,
+    keepVideoOverlay: c.fixKeepVideoOverlay === true || c.keepVideoOverlay === true
+      || c.fixNoDcompFeature === true || c.noDcompFeature === true
+      || c.fixNoDcompSwitch === true || c.noDcompSwitch === true
   };
 }
-ipcMain.handle('ui-config-get', () => ({
-  regionEnabled: uiCfg.regionEnabled !== false,   // 用户设置（下次启动生效）
-  regionActive: USE_REGION,                       // 本次启动是否真正启用了区域裁剪
-  regionAvailable: !!regionApi,                   // koffi / Win32 是否可用
-  configFile: UI_CFG_FILE,
-  sysTransparency,                                // 系统「透明效果」：true/false/null
-  transparentSupported: !IS_WIN ? null : sysTransparency !== false,
-  fix: currentFixFromFile(),                      // 配置文件里已保存的值（重启后生效）
-  fixActive: FIX                                  // 本次运行实际生效的值
-}));
+// ===== 显卡适配器探测（供控制台提示"混合显卡 → 黑块请勾关 GPU 合成"）=====
+// 只认三家的真实适配器；务必排除 Microsoft 基础渲染器（vendorId 0x1414），
+// 否则单显卡机器（软件渲染时也会列出一项）会被误判成多显卡。
+const GPU_VENDORS = { 0x10de: 'NVIDIA', 0x1002: 'AMD', 0x1022: 'AMD', 0x8086: 'Intel', 0x106b: 'Apple', 0x13b5: 'ARM' };
+let _gpuInfoCache = null;
+async function detectGpuAdapters() {
+  if (_gpuInfoCache) return _gpuInfoCache;
+  const out = { vendors: [], names: [], hybrid: false, active: null, amdSwitchable: null };
+  try {
+    const info = await app.getGPUInfo('basic');
+    const devs = Array.isArray(info && info.gpuDevice) ? info.gpuDevice : [];
+    const seen = {};
+    for (const d of devs) {
+      const v = GPU_VENDORS[Number(d.vendorId)];
+      if (!v) continue;                                   // 跳过 Microsoft 基础渲染器 / 虚拟显示适配器
+      if (!seen[v]) { seen[v] = true; out.vendors.push(v); }
+      if (d.deviceString && out.names.indexOf(d.deviceString) < 0) out.names.push(d.deviceString);
+      if (d.active && !out.active) out.active = d.deviceString || v;
+    }
+    // 混合显卡判定：NVIDIA / AMD / Intel 里出现两家以上
+    out.hybrid = out.vendors.length >= 2;
+    const aux = (info && info.auxAttributes) || {};
+    if (aux.amdSwitchable !== undefined) out.amdSwitchable = !!aux.amdSwitchable;
+    if (out.amdSwitchable) out.hybrid = true;
+  } catch (e) { /* 拿不到就当作未知，不提示 */ }
+  _gpuInfoCache = out;
+  return out;
+}
+ipcMain.handle('ui-config-get', async () => {
+  let gpu = null;
+  try { gpu = await detectGpuAdapters(); } catch (e) { /* noop */ }
+  return {
+    regionEnabled: uiCfg.regionEnabled !== false,   // 用户设置（下次启动生效）
+    regionActive: USE_REGION,                       // 本次启动是否真正启用了区域裁剪
+    regionAvailable: !!regionApi,                   // koffi / Win32 是否可用
+    configFile: UI_CFG_FILE,
+    sysTransparency,                                // 系统「透明效果」：true/false/null
+    transparentSupported: !IS_WIN ? null : sysTransparency !== false,
+    fix: currentFixFromFile(),                      // 配置文件里已保存的值（重启后生效）
+    fixActive: FIX,                                 // 本次运行实际生效的值
+    gpu                                            // 显卡适配器信息（混合显卡时提示黑块修复）
+  };
+});
 ipcMain.handle('ui-config-set', (e, patch) => { writeUiCfg(patch); return { ok: true, restartRequired: true }; });
 // 控制台「复制诊断信息」：把同一份环境诊断文本交给渲染进程复制到剪贴板
 ipcMain.handle('ui-diag-text', async () => { try { return await buildDiagnosticText(); } catch (e) { return ''; } });
+// 控制台页的「运行状态 / 系统与显卡」所需信息（轻量、不查网络）
+ipcMain.handle('app-info', async () => {
+  const os = require('os');
+  let gpu = null;
+  try { gpu = await detectGpuAdapters(); } catch (e) { /* noop */ }
+  return {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: os.type() + ' ' + os.release() + ' (' + os.arch() + ')',
+    arch: os.arch(),
+    isPackaged: app.isPackaged,
+    userData: app.getPath('userData'),
+    configFile: UI_CFG_FILE,
+    sysTransparency,
+    regionActive: USE_REGION,
+    fix: FIX,
+    gpu
+  };
+});
 // 系统"透明效果"检测：关闭时透明窗口会被整块填成黑色（用户反馈"黑边 → 关掉区域裁剪后全黑"的根因）
 // 结果同时写入 tts/logs/app.log，便于用户回传诊断
 let sysTransparency = null;   // null=未检测 / true=开启 / false=关闭
@@ -216,6 +293,16 @@ async function buildDiagnosticText() {
     } catch (e) { /* noop */ }
     try { L.push('硬件加速: ' + (FIX.disableGpu ? '已关闭(软件合成)' : '启用')); } catch (e) { /* noop */ }
     try {
+      L.push('--disable-gpu-compositing: ' + app.commandLine.hasSwitch('disable-gpu-compositing'));
+    } catch (e) { /* noop */ }
+    try {
+      const ad = await detectGpuAdapters();
+      L.push('显卡适配器: ' + (ad.names.length ? ad.names.join(' + ') : '(未识别)')
+        + '   厂商=[' + ad.vendors.join(',') + ']'
+        + '   混合显卡=' + ad.hybrid
+        + (ad.amdSwitchable === null ? '' : '   amdSwitchable=' + ad.amdSwitchable));
+    } catch (e) { /* noop */ }
+    try {
       const g = await app.getGPUInfo('complete');   // basic 不含 auxAttributes，complete 才能拿到显卡型号/驱动
       const a = (g && g.auxAttributes) || {};
       L.push('GPU 厂商: ' + (a.glVendor || '?'));
@@ -249,11 +336,31 @@ app.on('second-instance', () => {
   if (panel && !panel.isDestroyed()) panel.show();
   else ensurePanel();
 });
-// 三小只开关状态（控制面板持有真源）
-let idolVis = { airui: true, qianxia: true, nangong: true };
+// ===== 桌宠状态持久化（三小只各自的显示/隐藏，以及"是否全部收起"）=====
+// 位置由渲染层自己记在 localStorage；这里只存主进程持有的显隐真源。
+const PET_STATE_FILE = (() => { try { return require('path').join(app.getPath('userData'), 'pet_state.json'); } catch (e) { return null; } })();
+function readPetState() {
+  try { return PET_STATE_FILE ? (parseUiCfgText(require('fs').readFileSync(PET_STATE_FILE, 'utf8')) || {}) : {}; } catch (e) { return {}; }
+}
+function writePetState(patch) {
+  try {
+    if (!PET_STATE_FILE) return;
+    const next = Object.assign({}, readPetState(), patch || {});
+    require('fs').writeFileSync(PET_STATE_FILE, JSON.stringify(next, null, 2), 'utf8');
+  } catch (e) { /* noop */ }
+}
+function saveIdolVisState() {
+  writePetState({
+    idols: { airui: !!idolVis.airui, qianxia: !!idolVis.qianxia, nangong: !!idolVis.nangong },
+    allHidden: !!idolsAllHidden
+  });
+}
+// 三小只开关状态（控制面板持有真源；启动时从上次状态恢复）
+const _petState = readPetState();
+let idolVis = Object.assign({ airui: true, qianxia: true, nangong: true }, (_petState.idols || {}));
 // 一键"显示/隐藏小偶像"：逻辑层隐藏（三只 hidden），窗口永不 hide/show —— 绕开穿透 Bug A
 // （win.hide/show 后 setIgnoreMouseEvents(forward) 转发不可靠 → 拖动/右键失效）
-let idolsAllHidden = false;
+let idolsAllHidden = _petState.allHidden === true;
 // 设置显示/隐藏（**可指定目标状态**，供控制台勾选框、托盘、救援快捷键共用）
 function setIdolsShown(shown) {
   if (!win || win.isDestroyed() || !win.webContents) return !idolsAllHidden;
@@ -265,6 +372,7 @@ function setIdolsShown(shown) {
   if (panel && !panel.isDestroyed() && panel.webContents) {
     panel.webContents.send('idols-shown', shown);   // 控制台勾选框同步
   }
+  saveIdolVisState();   // 记下来：下次启动保持这次的显示/隐藏状态
   return shown;
 }
 function toggleMainWindow() { return setIdolsShown(idolsAllHidden); }
@@ -276,6 +384,67 @@ function hotkeyLabel() {
   if (!activeHotkey) return '';
   return activeHotkey.replace('Control', 'Ctrl');
 }
+// ===== 快捷键配置（控制台「快捷键」页可改；改完即时热更新）=====
+// 键名用 Electron accelerator 写法（如 Control+Shift+X）；界面负责把按键事件转成这种写法。
+const HOTKEY_FILE = (() => {
+  try { return require('path').join(app.getPath('userData'), 'hotkeys.json'); } catch (e) { return null; }
+})();
+const HOTKEY_DEFS = [
+  { id: 'lock', key: 'Control+Shift+X', name: '锁定三小只', desc: '锁上后鼠标完全穿透她们（打游戏防误触），再按一次解锁' },
+  { id: 'rescue', key: 'Control+Alt+Z', name: '召回三小只', desc: '被其它窗口盖住时，按一下立刻提到最前' }
+];
+function readHotkeyCfg() {
+  try { return HOTKEY_FILE ? (parseUiCfgText(require('fs').readFileSync(HOTKEY_FILE, 'utf8')) || {}) : {}; } catch (e) { return {}; }
+}
+const hotkeyCfg = Object.assign({}, ...HOTKEY_DEFS.map((d) => ({ [d.id]: d.key })), readHotkeyCfg());
+let hotkeyState = {};   // id → { key, active, ok, error, fallback }
+function writeHotkeyCfg() {
+  try { if (HOTKEY_FILE) require('fs').writeFileSync(HOTKEY_FILE, JSON.stringify(hotkeyCfg, null, 2), 'utf8'); } catch (e) { /* noop */ }
+}
+function hotkeyHandler(id) {
+  return () => {
+    if (id === 'lock') {
+      try { if (win && !win.isDestroyed() && win.webContents) win.webContents.send('lock-toggle'); } catch (e) { /* noop */ }
+    } else {
+      try { showOnTopOnce(300); } catch (e) { /* noop */ }
+    }
+  };
+}
+function applyHotkeys() {
+  try { globalShortcut.unregisterAll(); } catch (e) { /* noop */ }
+  hotkeyState = {};
+  activeHotkey = null;
+  for (const d of HOTKEY_DEFS) {
+    const want = String(hotkeyCfg[d.id] || d.key);
+    let active = want, ok = false, error = '', fallback = '';
+    try { ok = globalShortcut.register(want, hotkeyHandler(d.id)); } catch (e) { error = (e && e.message) || '注册失败'; }
+    if (!ok) {
+      if (!error) error = '该组合已被其它软件占用';
+      // 自定义键失败 → 回退到默认键，尽量别让功能整块失效
+      if (want !== d.key) {
+        try { if (globalShortcut.register(d.key, hotkeyHandler(d.id))) { ok = true; active = d.key; fallback = d.key; } } catch (e) { /* noop */ }
+      }
+    }
+    // 召回键沿用历史的"候选降级"习惯：默认键也被占用时再试几个常见组合
+    if (!ok && d.id === 'rescue') {
+      for (const hk of ['Control+Alt+D', 'Control+Alt+F9', 'Control+Shift+Alt+Z']) {
+        try { if (globalShortcut.register(hk, hotkeyHandler(d.id))) { ok = true; active = hk; fallback = hk; break; } } catch (e) { /* next */ }
+      }
+    }
+    if (d.id === 'rescue' && ok) activeHotkey = active;
+    hotkeyState[d.id] = { key: want, active, ok, error: ok ? (fallback ? '已回退到 ' + fallback : '') : error, fallback };
+    console.log('[HOTKEY]', d.id, '→', active, ok ? '(ok)' : '(FAILED: ' + error + ')');
+  }
+  try { if (tray) tray.setToolTip('妄想天使桌宠（点击提到最前' + (activeHotkey ? ' · ' + hotkeyLabel() : '') + '）'); } catch (e) { /* noop */ }
+  return hotkeyState;
+}
+function hotkeysPayload() {
+  return {
+    defs: HOTKEY_DEFS.map((d) => ({ id: d.id, name: d.name, desc: d.desc, def: d.key })),
+    cfg: Object.assign({}, hotkeyCfg),
+    state: hotkeyState
+  };
+}
 
 // ===== 主进程鼠标轮询穿透裁决（核心健壮性机制）=====
 // 原理：screen.getCursorScreenPoint() 是系统级取全局鼠标位置（GetCursorPos），**不受窗口遮挡、
@@ -285,6 +454,9 @@ function hotkeyLabel() {
 let hitRects = [];              // [{x,y,w,h}] 窗口 client 坐标（CSS px）
 let hitForceInteractive = false; // 拖动/编辑等强制可交互
 let hitRectsMoving = false;      // 角色物理运动中（重力甩飞/下落）→ 区域边距放大 + 跟随更勤
+let hitNoInteract = false;       // 锁定状态：矩形仍用于窗口形状，但鼠标一律穿透（不参与可交互判定）
+const HIT_LOG = process.env.QX_HITLOG === '1';   // 命中判定日志（排障穿透/挡窗口）
+let lastHitLogForce = null, lastHitLogCount = -1;
 let hitForceSince = 0;           // force 起始时间（超时兜底：renderer 若卡住则不再永久置顶）
 let mousePollTimer = null;
 let mousePollInside = null;     // null=未初始化（首次必定下发）
@@ -640,7 +812,9 @@ function mousePollTick() {
   }
   let inside = hitForceInteractive;
   let cx = -1, cy = -1;
-  if (!inside && hitRects.length) {
+  // hitNoInteract（锁定）= 不做矩形命中：窗口保持穿透，鼠标直接操作背后窗口。
+  // 注意此时仍要记录光标位置——窗口形状在拖动等场景下会用到它。
+  if (!hitNoInteract && !inside && hitRects.length) {
     const p = screen.getCursorScreenPoint();   // 屏幕 DIP 坐标（不受遮挡/SetCapture 影响）
     const b = win.getBounds();
     cx = p.x - b.x; cy = p.y - b.y;            // → 窗口 client 坐标（1:1 CSS px）
@@ -860,10 +1034,14 @@ function createWindow() {
   });
 
   win.webContents.on('did-finish-load', () => {
-    // 同步角色开关初始状态
+    // 同步角色开关初始状态（idolVis 已在启动时从 pet_state.json 恢复）
     win.webContents.send('set-idol-visibility', 'airui', idolVis.airui);
     win.webContents.send('set-idol-visibility', 'qianxia', idolVis.qianxia);
     win.webContents.send('set-idol-visibility', 'nangong', idolVis.nangong);
+    // 上次退出时如果三只都收起来了，这次也要保持收起（idolVis 里仍是各自的值，所以需要补这一下）
+    if (idolsAllHidden) {
+      setTimeout(() => { try { setIdolsShown(false); } catch (e) { /* noop */ } }, 400);
+    }
     // 调试：QX_ENTEST=1 复现"隐藏→显示→拖动/点击"
     if (process.env.QX_ENTEST === '1') {
       setTimeout(() => win.webContents.send('set-idol-visibility', 'airui', false), 1200);
@@ -1047,16 +1225,12 @@ app.whenReady().then(() => {
     rebuildTrayMenu();
     tray.on('click', () => showOnTopOnce(300));   // 点托盘=召回（比"显示/隐藏"更符合直觉）
   } catch (e) { console.error('tray init failed', e); }
-  // 全局快捷键：把三小只提到最前（未置顶被覆盖/被截图工具接管时的救援入口）
-  // ⚠️ globalShortcut 需独占注册：被其他软件占用会返回 false → 依次尝试候选，成功即用并告知 UI
-  const HOTKEY_CANDIDATES = ['Control+Alt+Z', 'Control+Alt+D', 'Control+Alt+F9', 'Control+Shift+Alt+Z'];
+  // 全局快捷键统一由 applyHotkeys() 处理（定义见上方「快捷键配置」段）
+  // ===== 全局快捷键（可在控制台「快捷键」页自定义；改完即时热更新）=====
+  // 设计：统一走 applyHotkeys() —— 先全部注销再按当前配置注册，避免残留旧键位。
+  // 注册失败（被其它软件占用）不静默：记录状态回报给界面，并在可能时回退默认键，保证功能不至于全废。
   activeHotkey = null;
-  for (const hk of HOTKEY_CANDIDATES) {
-    try {
-      if (globalShortcut.register(hk, () => showOnTopOnce(300))) { activeHotkey = hk; break; }
-    } catch (e) { /* try next */ }
-  }
-  console.log('[HOTKEY] active =', activeHotkey || '(none)');
+  applyHotkeys();
   if (tray) { try { tray.setToolTip('妄想天使桌宠（点击提到最前' + (activeHotkey ? ' · ' + hotkeyLabel() : '') + '）'); } catch (e) { /* noop */ } }
   // 调试：QX_FRONTTEST=1 → 启动 5s 后自动执行一次"提到最前"（验证被覆盖时的提层机制）
   if (process.env.QX_FRONTTEST === '1') {
@@ -1116,6 +1290,27 @@ app.whenReady().then(() => {
   ipcMain.handle('clipboard-write', (e, text) => { clipboard.writeText(String(text == null ? '' : text)); return true; });
   // 实际生效的救援快捷键（供 UI 提示；未被占用时才有值）
   ipcMain.handle('get-hotkey', () => hotkeyLabel());
+// ===== 快捷键的读 / 改 / 恢复默认（改完立即重新注册，无需重启）=====
+ipcMain.handle('hotkeys-get', () => hotkeysPayload());
+ipcMain.handle('hotkeys-set', (e, id, key) => {
+  const def = HOTKEY_DEFS.find((d) => d.id === id);
+  if (!def) return { ok: false, error: '未知的快捷键' };
+  const k = String(key || '').trim();
+  // 至少要有修饰键 + 一个主键，避免把功能绑成裸键（会抢走全系统的按键）
+  if (!/^(Control|Command|CommandOrControl|Alt|Shift|Super)(\+(Control|Command|CommandOrControl|Alt|Shift|Super))*\+.+$/.test(k)) {
+    return { ok: false, error: '快捷键至少要包含一个修饰键（Ctrl / Alt / Shift）' };
+  }
+  hotkeyCfg[id] = k;
+  writeHotkeyCfg();
+  applyHotkeys();
+  return { ok: true, payload: hotkeysPayload() };
+});
+ipcMain.handle('hotkeys-reset', () => {
+  for (const d of HOTKEY_DEFS) hotkeyCfg[d.id] = d.key;
+  writeHotkeyCfg();
+  applyHotkeys();
+  return { ok: true, payload: hotkeysPayload() };
+});
 
   // ===== 系统类开关：开机自启动 / 保持置顶 =====
   // ⚠️ Windows 上 getLoginItemSettings 必须与写入时使用**完全相同的 path+args** 才会返回 true，
@@ -1297,9 +1492,12 @@ app.whenReady().then(() => {
       win.webContents.send('set-idol-visibility', payload.key, idolVis[payload.key]);
     }
     if (panel && !panel.isDestroyed()) panel.webContents.send('panel-init', idolVis);
+    saveIdolVisState();   // 记住单只的显示/隐藏（下次启动恢复）
   });
   ipcMain.on('set-focusable', (e, v) => {
     if (win && !win.isDestroyed()) win.setFocusable(!!v);
+    // QX_FOCUSLOG=1：打印可聚焦开关（排障"点了输入框但打不了字"——多半是这里没开）
+    if (process.env.QX_FOCUSLOG === '1') console.log('[FOCUS] setFocusable(' + (!!v) + ') → ' + (win.isFocusable() ? 'on' : 'off'));
   });
   // 鼠标穿透切换：**已由主进程轮询统一裁决**（见 mousePollTick）；此 IPC 保留作兼容/手动覆盖
   ipcMain.on('set-mouse-ignore', (e, ignore) => {
@@ -1310,6 +1508,8 @@ app.whenReady().then(() => {
     if (!payload) return;
     hitRects = Array.isArray(payload.rects) ? payload.rects : [];
     hitRectsMoving = !!payload.moving;   // 角色物理运动中（重力甩飞/下落）→ 区域用大边距
+    // 锁定状态：矩形照收（窗口形状要包含她们才能画全），但不参与鼠标可交互判定 → 始终穿透
+    hitNoInteract = !!payload.noInteract;
     applyWindowRegion(hitRects);   // 窗口形状 = 角色/浮层矩形并集（修 K1 视频黑屏：形状外不参与合成）
     // 跟随角色模式：角色跑到另一块屏时把窗口贴过去（拖动/走动的角色矩形都在 hitRects 里）
     if (hitRects.length && !hitForceInteractive) {
@@ -1321,6 +1521,15 @@ app.whenReady().then(() => {
       if (isFinite(minX)) followIdolDisplay((minX + maxX) / 2, (minY + maxY) / 2);
     }
     const f = !!payload.force;
+    // QX_HITLOG=1：打印命中判定关键值。排障"透明大窗挡住后面窗口"必看：
+    // force=true 时 mousePollTick 里 inside 恒为 true → 整窗（1708x912）都可点。
+    if (HIT_LOG && (f !== lastHitLogForce || hitRects.length !== lastHitLogCount)) {
+      lastHitLogForce = f; lastHitLogCount = hitRects.length;
+      console.log('[HIT] force=' + f + ' rects=' + hitRects.length + ' moving=' + hitRectsMoving + ' noInteract=' + hitNoInteract
+        + ' union=' + (() => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+            for (const r of hitRects) { a = Math.min(a, r.x); b = Math.min(b, r.y); c = Math.max(c, r.x + r.w); d = Math.max(d, r.y + r.h); }
+            return isFinite(a) ? Math.round(c - a) + 'x' + Math.round(d - b) + '@' + Math.round(a) + ',' + Math.round(b) : '-'; })());
+    }
     if (f && !hitForceInteractive) hitForceSince = Date.now();
     if (!f) hitForceSince = 0;
     hitForceInteractive = f;
@@ -1337,13 +1546,50 @@ app.whenReady().then(() => {
   ipcMain.on('context-menu', () => { /* 菜单已迁移为 renderer DOM 菜单 */ });
 
   // 调试：--panel-shot [delayMs] 截图控制面板（懒加载后需先创建）
+  //       可加 --panel-page=home|ai|voice|settings|console 先切到指定页再截图
+  //       可加 --panel-scroll=<元素id> 先把该元素滚到视野中间
   const panelShotArg = process.argv.indexOf('--panel-shot');
   if (panelShotArg !== -1) {
     const delay = parseInt(process.argv[panelShotArg + 1] || '1800', 10) || 1800;
+    const pageArg = process.argv.find((a) => a.indexOf('--panel-page=') === 0);
+    const pageName = pageArg ? pageArg.split('=')[1] : '';
+    const scrollArg = process.argv.find((a) => a.indexOf('--panel-scroll=') === 0);
+    const scrollId = scrollArg ? scrollArg.split('=')[1] : '';
+    const hoverArg = process.argv.find((a) => a.indexOf('--panel-hover=') === 0);
+    const hoverId = hoverArg ? hoverArg.split('=')[1] : '';
+    // --panel-eval=<js>：截图前在控制台页面里执行一段 JS（仅在未打包时生效，发布版无此能力）
+    const evalArg = process.argv.find((a) => a.indexOf('--panel-eval=') === 0);
+    const evalCode = (!app.isPackaged && evalArg) ? evalArg.slice('--panel-eval='.length) : '';
     setTimeout(async () => {
       try {
         ensurePanel();   // 控制台按需创建：调试截图前先确保存在
         await new Promise((r) => setTimeout(r, 1200));
+        if (pageName) {
+          await panel.webContents.executeJavaScript(
+            "var b=document.getElementById('btn-" + pageName + "'); if(b) b.click();");
+          await new Promise((r) => setTimeout(r, 600));
+        }
+        if (scrollId) {
+          // --panel-scroll=<CSS 选择器>：把匹配到的元素滚到视野中间
+          await panel.webContents.executeJavaScript(
+            "var e=document.querySelector(" + JSON.stringify(scrollId) + ");"
+            + " if(e) e.scrollIntoView({block:'center'});");
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        if (hoverId) {
+          // 用来验证悬浮说明：--panel-hover=<CSS 选择器>，把匹配到的元素当成被鼠标悬停
+          await panel.webContents.executeJavaScript(
+            "var e=document.querySelector(" + JSON.stringify(hoverId) + ");"
+            + " if(e) e.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));");
+          await new Promise((r) => setTimeout(r, 450));
+        }
+        if (evalCode) {
+          try {
+            const r = await panel.webContents.executeJavaScript(evalCode);
+            if (r !== undefined) console.log('panel-eval result:', JSON.stringify(r));
+          } catch (e) { console.error('panel-eval failed', e); }
+          await new Promise((r2) => setTimeout(r2, 500));
+        }
         const img = await panel.webContents.capturePage();
         fs.writeFileSync(path.join(__dirname, 'panel-shot.png'), img.toPNG());
         console.log('panel-shot saved');

@@ -353,9 +353,22 @@
   }
   let bubbleHideTimer = null;   // 气泡隐藏定时器（showBubble/showBubbleTyping 共用句柄，可取消）
   let bubbleIsChat = false;     // true=当前气泡是"聊天回复气泡"（拖动角色时保持显示，不消失）
+  // 气泡停留时长：**按文本长度自适应**，不再固定。
+  // 阅读速度按中文约 5 字/秒（每字 190ms）+ 1.1 秒起步，并夹在 2.6s ~ 14s 之间：
+  // 短句不会一闪而过，长句也来得及读完（用户反馈固定时长不合适）。
+  function bubbleHoldMs(text, explicit) {
+    const n = String(text == null ? '' : text).length;
+    let ms = 1100 + n * 190;
+    ms = Math.max(2600, Math.min(14000, Math.round(ms)));
+    if (explicit) ms = Math.max(ms, explicit);
+    return ms;
+  }
   function showBubble(msgText, holdMs, role) {
     if (dk.env('QX_ANIMLOG') === '1') console.log('[BUBBLE] show role=' + role + ' hold=' + holdMs + ' rejected=' + bubbleLock);
-    if (bubbleLock) return false;
+    // 换人说话 → 直接抢占。互聊是轮流发言的：上一句（尤其长台词）的气泡不能把下一句憋住，
+    // 否则会出现"下一位只有动作、气泡不出现"的怪现象（气泡时长改成按字数自适应后更明显）。
+    const preempt = bubbleLock && role && bubbleRole && role !== bubbleRole;
+    if (bubbleLock && !preempt) return false;
     bubbleLock = true;
     bubbleIsChat = false;   // 普通互动/待机气泡
     if (role) bubbleRole = role;
@@ -373,11 +386,11 @@
       placePopover();
       if (i < text.length) { bubbleTypingTimer = setTimeout(step, 36); return; }
       bubbleTypingTimer = null;
-      // 停留时长：调用点传入值 + 2000ms（用户反馈消失太快，统一延长 2 秒）
+      // 停留时长：按文本长度自适应（见 bubbleHoldMs）
       bubbleHideTimer = setTimeout(() => {
         popover.classList.remove('show');
         bubbleLock = false;
-      }, (holdMs || CFG.BUBBLE_INTERVAL) + 2000);
+      }, bubbleHoldMs(text, holdMs));
     };
     step();
     return true;
@@ -691,7 +704,7 @@
     if (!on) scheduleReleaseIdol(key);   // 隐藏后延迟释放内存
     // 全部隐藏：顺手收起浮动 UI（避免"空窗口里飘着菜单/面板/对话框"）
     if (ROLE_KEYS.every((k) => idols[k].hidden)) {
-      hideCtxMenu(); hideSizePanel(); hideFreqPanel(); hideVolPanel(); hideMusicPanel();
+      hideCtxMenu(); hideSizePanel(); hideFreqPanel(); hideVolPanel(); hideSpeedPanel(); hideMusicPanel();   // 番茄钟是独立小工具，全隐藏时保留
       if (dialog.open) closeDialog();
       if (chat.open) closeChatPanel();
     }
@@ -723,6 +736,9 @@
              w: Math.abs(p2.x - p1.x) + pad * 2, h: Math.abs(p2.y - p1.y) + pad * 2 };
   }
   function hitIdol(x, y) {
+    // 锁定 = 三小只只是"显示在桌面上"：鼠标完全不与她们产生交互（点击/悬停/右键全部穿透到背后的窗口）。
+    // 注意：命中判定返回 null 后，上报给主进程的窗口区域也就不含她们 → 窗口自动变成点击穿透。
+    if (idolLocked) return null;
     for (const key of ROLE_KEYS) {
       if (idols[key].hidden) continue;   // 隐藏（休息）的角色不参与命中
       const r = idolScreenRect(key);
@@ -859,6 +875,8 @@
     uiOpen: 'audio/ui_menu_open.mp3',
     uiHover: 'audio/ui_menu_hover.mp3',
     uiSelect: 'audio/ui_menu_select.mp3',
+    pomoStart: 'audio/pomo_start.mp3',      // 开始计时（主人指定）
+    pomoPhase: 'audio/pomo_phase.mp3',      // 每个阶段完成（主人指定）
     boot: 'audio/sfx_boot.mp3'
   };
   // BGM 列表：动态扫描 assets/bgm/（用户放入音频文件即自动收录，重启后出现在列表）
@@ -1058,9 +1076,12 @@
     elm.style.left = Math.max(8, L) + 'px';
     elm.style.top = Math.max(8, T) + 'px';
   }
-  function makeDraggable(elm, handle) {
+  function makeDraggable(elm, handle, onEnd) {
     handle.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      // 手柄内可能嵌着表单/按钮：番茄钟整块机身都是手柄，⚙ 设置卡就落在里面。
+      // 这类元素绝不能 preventDefault —— 否则输入框点不进去（无法聚焦），拖拽还会抢走交互。
+      if (e.target && e.target.closest && e.target.closest('input, textarea, select, button, a, [data-nodrag]')) return;
       e.preventDefault();
       const r = elm.getBoundingClientRect();
       const ox = r.left - e.clientX, oy = r.top - e.clientY;
@@ -1069,7 +1090,10 @@
         elm.style.top = (ev.clientY + oy) + 'px';
         elm.style.right = 'auto'; elm.style.bottom = 'auto';
       };
-      const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+      const up = () => {
+        window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
+        if (typeof onEnd === 'function') { try { onEnd(); } catch (e) { /* noop */ } }
+      };
       window.addEventListener('mousemove', mv);
       window.addEventListener('mouseup', up);
     });
@@ -1135,6 +1159,967 @@
     refreshFreqRows();
     if (schedule !== false) scheduleBubbleTimer();
   }
+  // ================= 番茄钟（右键菜单「🍅 番茄钟…」） =================
+  // ================= 番茄钟（桌面小组件） =================
+  // 机身贴图 772x1146（已去挂绳，屏幕区镂空）；屏幕/模块等几何全部由 tools/pomo-*.js 像素实测得出。
+  // 两个视图：设置态（屏内三行参数）⇄ 计时态（时间＋彩虹进度框＋电子流体＋停止钮）。
+  const pomoPanel = document.getElementById('pomodoro-panel');
+  // 配置单位是「分钟」，可自定义并记忆
+  const POMO_CFG = Object.assign({ focus: 25, short: 5, long: 15, perLong: 4 }, (function () {
+    try { return JSON.parse(localStorage.getItem('QX_POMOCFG') || '{}') || {}; } catch (e) { return {}; }
+  })());
+  const POMO_SEC = (p) => (p === 'focus' ? POMO_CFG.focus : (p === 'short' ? POMO_CFG.short : POMO_CFG.long)) * 60;
+  // sessionOn：是否已经开跑（决定显示设置态还是计时态）；计时用"墙上时钟"避免卡顿累计误差
+  const pomo = { phase: 'focus', total: POMO_SEC('focus'), left: POMO_SEC('focus'), running: false, round: 1, today: 0, endAt: 0, timer: null, draining: false, sessionOn: false };
+  (function loadPomo() {
+    try {
+      const s = JSON.parse(localStorage.getItem('QX_POMO') || 'null');
+      if (s && s.day === new Date().toDateString()) {
+        pomo.today = s.today || 0;
+        // 长休已取消：旧存档里的 'long' 一律按短休恢复
+        if (s.phase === 'focus' || s.phase === 'short') pomo.phase = s.phase;
+        const rd = parseInt(s.round, 10);
+        if (isFinite(rd)) pomo.round = Math.min(POMO_CFG.perLong, Math.max(1, rd));
+      }
+    } catch (e) { /* noop */ }
+  })();
+  function pomoSaveToday() {
+    try {
+      localStorage.setItem('QX_POMO', JSON.stringify({
+        day: new Date().toDateString(), today: pomo.today, phase: pomo.phase, round: pomo.round
+      }));
+    } catch (e) { /* noop */ }
+  }
+  function pomoFmt(sec) {
+    const s = Math.max(0, Math.round(sec));
+    const m = Math.floor(s / 60), r = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  function pomoPhaseName() { return pomo.phase === 'focus' ? '专注' : '休息'; }
+  // 桌宠窗口建窗时是 win.setFocusable(false)（不抢焦点）→ 要打字必须先打开聚焦，
+  // 否则"点了数值能看见光标、键盘却送不进窗口"（用户实测）。聊天输入框用的是同一套做法。
+  function pomoNeedKeyboard(on) {
+    if (on) { dk.setFocusable(true); return; }
+    const ae = document.activeElement;
+    const typing = ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName);
+    if (!typing && editMsgIndex == null) dk.setFocusable(false);
+  }
+  // ---- 小屏状态字：逐字掉落/掉入 + 彩虹渐变流动 ----
+  let pomoStateText = '';
+  let pomoStateBusy = false, pomoStatePending = null;
+  // 掉落/掉入的总时长：最后一个字的延迟 + 单个字的动画时长（CSS: pmCharOut .34s / pmCharIn .42s）
+  const POMO_OUT_MS = (n) => (n - 1) * 75 + 370;
+  const POMO_IN_MS = (n) => (n - 1) * 95 + 450;
+  // 往小屏里放一层新字（逐字掉入）
+  function pomoStateLayer(box, text) {
+    const layer = document.createElement('div');
+    layer.className = 'ps-layer' + (text === '番茄钟' ? '' : ' rainbow');
+    // 小屏只有 87x226：字数越多字号越小，保证 4 字「专注模式」也塞得下
+    layer.style.fontSize = (text.length >= 4 ? 48 : (text.length === 3 ? 58 : 64)) + 'px';
+    text.split('').forEach((ch, i) => {
+      const sp = document.createElement('span');
+      sp.className = 'pc in';
+      sp.textContent = ch;
+      sp.style.animationDelay = (i * 95) + 'ms';             // 专 → 注 → 模 → 式 依次掉入
+      layer.appendChild(sp);
+    });
+    box.appendChild(layer);
+    return layer;
+  }
+  // 严格排队：上一段「掉落 → 掉入」必须完整播完，才播下一段（用户明确要求）。
+  // 一次只存在一层 → 不会堆字；中途来的状态先排队，等当前这段播完再切。
+  function pomoSetState(text) {
+    if (pomoStateText === text && pomoStatePending == null) return;
+    if (pomoStateBusy) { pomoStatePending = text; return; }   // 忙 → 排队（只记最后一次，避免越拖越旧）
+    const box = document.getElementById('pomo-state');
+    if (!box) return;
+    pomoStateBusy = true;
+    pomoStateText = text;
+    const old = box.querySelector('.ps-layer');
+    const startIn = () => {
+      const layer = pomoStateLayer(box, text);
+      setTimeout(() => {                                      // 掉入也播完 → 交棒给排队的那一个
+        pomoStateBusy = false;
+        if (pomoStatePending != null) {
+          const nx = pomoStatePending;
+          pomoStatePending = null;
+          pomoSetState(nx);
+        }
+      }, POMO_IN_MS(layer.children.length));
+    };
+    if (!old) { startIn(); return; }
+    const outCount = old.children.length;
+    Array.from(old.children).forEach((c, i) => {              // 从下往上依次掉落（钟 → 茄 → 番）
+      c.classList.remove('in');
+      c.style.animationDelay = ((outCount - 1 - i) * 75) + 'ms';
+      c.classList.add('out');
+    });
+    setTimeout(() => {
+      try { old.remove(); } catch (e) { /* noop */ }
+      startIn();
+    }, POMO_OUT_MS(outCount));
+  }
+  // 彩虹框"从一点开始画"：先全部归零，再按 左↓ → 下→ → 右↑ → 上← 依次长出，最终成矩形
+  function pomoFrameDraw() {
+    const segs = [['ptseg-l', 0], ['ptseg-b', 1], ['ptseg-r', 2], ['ptseg-t', 3]];
+    segs.forEach(([id]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.transition = 'transform .3s linear';
+      el.style.transitionDelay = '0s';
+      el.style.transform = (id === 'ptseg-l' || id === 'ptseg-r') ? 'scaleY(0)' : 'scaleX(0)';
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const r = Math.max(0, Math.min(1, pomo.left / Math.max(1, pomo.total)));
+      segs.forEach(([id], k) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const v = Math.max(0, Math.min(1, (r - k * 0.25) / 0.25));
+        el.style.transitionDelay = (k * 0.18) + 's';
+        el.style.transform = (id === 'ptseg-l' || id === 'ptseg-r')
+          ? 'scaleY(' + v.toFixed(3) + ')' : 'scaleX(' + v.toFixed(3) + ')';
+      });
+      setTimeout(() => {
+        segs.forEach(([id]) => {
+          const el = document.getElementById(id);
+          if (el) { el.style.transitionDelay = ''; el.style.transition = ''; }
+        });
+      }, 1300);
+    }));
+  }  // ---- 时间：≥1 小时 → 小时:分钟，否则 分钟:秒（单位各自显示在数字上方）----
+  function pomoRenderTimer() {
+    const s = Math.max(0, Math.round(pomo.left));
+    const two = (n) => (n < 10 ? '0' : '') + n;
+    const u1 = document.getElementById('pt-u1'), u2 = document.getElementById('pt-u2');
+    const v1 = document.getElementById('pt-v1'), v2 = document.getElementById('pt-v2');
+    if (pomo.total >= 3600) {
+      if (u1) u1.textContent = '小时';
+      if (u2) u2.textContent = '分钟';
+      if (v1) v1.textContent = two(Math.floor(s / 3600));
+      if (v2) v2.textContent = two(Math.floor((s % 3600) / 60));
+    } else {
+      if (u1) u1.textContent = '分';
+      if (u2) u2.textContent = '秒';
+      if (v1) v1.textContent = two(Math.floor(s / 60));
+      if (v2) v2.textContent = two(s % 60);
+    }
+  }
+  // ---- 彩虹进度框：按 左↓ → 下→ → 右↑ → 上← 的顺序绘制，剩余时间越少围得越短 ----
+  function pomoRenderFrame(r) {
+    const set = (id, k) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const v = Math.max(0, Math.min(1, (r - k * 0.25) / 0.25));
+      el.style.transform = (id === 'ptseg-l' || id === 'ptseg-r')
+        ? 'scaleY(' + v.toFixed(3) + ')' : 'scaleX(' + v.toFixed(3) + ')';
+    };
+    set('ptseg-l', 0); set('ptseg-b', 1); set('ptseg-r', 2); set('ptseg-t', 3);
+  }
+  function pomoRender() {
+    const fluid = document.getElementById('pomo-sand');       // 电子流体（沿用原 id）
+    const btn = document.getElementById('pomo-play');
+    const stage = document.getElementById('pomo-stage');
+    const on = !!pomo.sessionOn;
+    if (stage) {
+      stage.classList.toggle('setup', !on);
+      stage.classList.toggle('running', on);
+    }
+    const prog = pomo.total > 0 ? Math.min(1, Math.max(0, 1 - pomo.left / pomo.total)) : 0;
+    if (fluid) {
+      fluid.style.transform = 'scaleY(' + prog.toFixed(4) + ')';
+      fluid.classList.toggle('rest', pomo.phase !== 'focus');
+    }
+    if (on) {
+      pomoRenderTimer();
+      pomoRenderFrame(Math.max(0, Math.min(1, pomo.left / Math.max(1, pomo.total))));
+      const rd = document.getElementById('pomo-round');
+      if (rd) {
+        const txt = '第 ' + pomo.round + '/' + POMO_CFG.perLong + ' 轮';
+        if (rd.textContent !== txt) {
+          rd.textContent = txt;
+          rd.classList.remove('bump');
+          void rd.offsetWidth;
+          rd.classList.add('bump');
+        }
+      }
+      pomoSetState(pomo.phase === 'focus' ? '专注模式' : '休息模式');
+    } else {
+      pomoSetState('番茄钟');
+    }
+    if (btn) {
+      btn.textContent = pomo.running ? '❚❚' : '▶';
+      btn.classList.toggle('running', pomo.running);
+      btn.title = pomo.running ? '暂停' : '开始';
+    }
+    if (!on) pomoSyncSetup();
+    // 方向键提示随视图变化
+    const tips = on
+      ? { 'pomo-up': '本阶段时长 +5 分钟（可长按）', 'pomo-down': '本阶段时长 −5 分钟（可长按）',
+          'pomo-reset': '重置本阶段', 'pomo-skip': '跳到下一阶段' }
+      : { 'pomo-up': '选中上一项', 'pomo-down': '选中下一项',
+          'pomo-reset': '数值 −1（可长按连续调）', 'pomo-skip': '数值 +1（可长按连续调）' };
+    for (const id in tips) { const t = document.getElementById(id); if (t) t.title = tips[id]; }
+  }
+  function pomoTick() {
+    if (!pomo.running) return;
+    const left = Math.max(0, (pomo.endAt - Date.now()) / 1000);
+    if (Math.ceil(left) !== Math.ceil(pomo.left)) { pomo.left = left; pomoRender(); }
+    if (left <= 0) pomoNext(true);
+  }
+  function pomoStart() {
+    if (pomo.running) return;
+    if (!pomo.sessionOn) {
+      // 从设置态开跑：设置里的时长生效，并从第 1 轮开始
+      pomo.sessionOn = true;
+      pomo.phase = 'focus';
+      pomo.round = 1;
+      pomo.total = POMO_SEC('focus');
+      pomo.left = pomo.total;
+      try { localStorage.setItem('QX_POMOCFG', JSON.stringify(POMO_CFG)); } catch (e) { /* noop */ }
+      // "创作"那个数值直接滑到计时位：先按目标几何把计时器挪回数值处，下一帧放开 → 滑过去并放大
+      // （transform 已被"调整大小"占用，这里用独立的 translate / scale，二者可叠加）
+      try {
+        const tEl = document.getElementById('pomo-timer');
+        const fEl = document.getElementById('ps-focus');
+        const sr = document.getElementById('pomo-stage').getBoundingClientRect();
+        if (tEl && fEl && sr.width) {
+          const ar = fEl.getBoundingClientRect();
+          const th = 0.173 * sr.height;
+          const tcx = sr.left + 0.4003 * sr.width, tcy = sr.top + 0.25 * sr.height;
+          tEl.style.translate = (ar.left + ar.width / 2 - tcx).toFixed(1) + 'px '
+            + (ar.top + ar.height / 2 - tcy).toFixed(1) + 'px';
+          tEl.style.scale = Math.max(0.32, (ar.height / th) * 0.8).toFixed(3);
+          tEl.style.opacity = '0';
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (!tEl) return;
+            tEl.style.translate = ''; tEl.style.scale = ''; tEl.style.opacity = '';
+          }));
+        }
+      } catch (e) { /* noop */ }
+      try { playSfxFile(AUDIO_FILES.pomoStart); } catch (e) { /* noop */ }   // 开始计时音效
+      pomoFrameDraw();                       // 框从一点开始画出来
+      pomoCheer('focus');                    // 开始专注 → 三小只各自表态
+    }
+    if (pomo.left <= 0) pomo.left = pomo.total;
+    pomo.running = true;
+    pomo.endAt = Date.now() + pomo.left * 1000;
+    if (pomo.timer) clearInterval(pomo.timer);
+    pomo.timer = setInterval(pomoTick, 250);
+    pomoRender();
+  }
+  function pomoPause() {
+    pomo.running = false;
+    if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = null; }
+    pomoRender();
+  }
+  function pomoReset() {
+    pomo.left = pomo.total;
+    if (pomo.running) pomo.endAt = Date.now() + pomo.left * 1000;
+    pomoRender();
+  }
+  // 上下键微调本阶段时长（计时态用）
+  function pomoAdjust(min) {
+    const cur = Math.round(pomo.total / 60);
+    const next = Math.max(1, Math.min(180, cur + min));
+    if (next === cur) return;
+    const delta = (next - cur) * 60;
+    pomo.total += delta;
+    pomo.left = Math.max(0, pomo.left + delta);
+    if (pomo.running) pomo.endAt += delta * 1000;
+    if (pomo.left <= 0) pomoNext(true);
+    pomoRender();
+  }
+  // ---- 阶段切换时三小只的反应：各自表情 + 气泡（每只 2 条，按人设写）----
+  const POMO_LINES = {
+    focus: {
+      airui: ['开工开工！人家陪你一起专注～', '冲呀！这轮做完请你吃布丁！'],
+      qianxia: ['专注时间到了，别分心。', '这一轮，我在这儿陪着你。'],
+      nangong: ['一起加油吧，人家会安静陪着你的。', '先做最重要的那一件事就好～']
+    },
+    short: {
+      airui: ['休息啦！快站起来伸个懒腰～', '喝口水吧，人家盯着你休息哦！'],
+      qianxia: ['休息一下，眼睛也要放松。', '别硬撑，起来走走。'],
+      nangong: ['休息时间～要不要人家给你倒杯水？', '别太久不休息哦，人家会担心的。']
+    }
+  };
+  const POMO_POSE = { focus: '兴奋', short: '害羞' };
+  let pomoCheerAt = 0;
+  function pomoCheer(kind) {
+    const lines = POMO_LINES[kind];
+    if (!lines) return;
+    const now = Date.now();
+    if (now - pomoCheerAt < 3000) return;      // 防抖：阶段来回跳时不刷屏
+    pomoCheerAt = now;
+    let i = 0;
+    ROLE_KEYS.forEach((key) => {
+      const c = idols[key];
+      if (!c || c.hidden) return;              // 收起来的就不打扰了
+      const arr = lines[key] || [];
+      if (!arr.length) return;
+      const txt = arr[Math.floor(Math.random() * arr.length)];
+      const delay = i * 900;                   // 错开，避免气泡互相抢占
+      i++;
+      setTimeout(() => {
+        try { changeFace(key, poseIdFromName(key, POMO_POSE[kind] || '兴奋')); } catch (e) { /* noop */ }
+        try { showBubble(txt, bubbleHoldMs(txt), key); } catch (e) { /* noop */ }
+      }, delay);
+    });
+  }  // 进入某个阶段：清掉过场临时过渡 + 屏面闪一下
+  function pomoEnterPhase(name) {
+    pomo.phase = name;
+    pomo.total = POMO_SEC(name);
+    pomo.left = pomo.total;
+    const fluid = document.getElementById('pomo-sand');
+    if (fluid) fluid.style.transition = '';
+    if (pomo.running) pomo.endAt = Date.now() + pomo.left * 1000;
+    pomoRender();
+    if (pomo.sessionOn) pomoFrameDraw();     // 换阶段也重画一次
+    pomoCheer(name === 'focus' ? 'focus' : 'short');
+    const stage = document.getElementById('pomo-stage');
+    if (stage) {
+      stage.classList.remove('phase-in');
+      void stage.offsetWidth;
+      stage.classList.add('phase-in');
+      setTimeout(() => { try { stage.classList.remove('phase-in'); } catch (e) { /* noop */ } }, 680);
+    }
+  }
+  // 没有长休：专注 → 休息 → 专注 …；跑满「轮次」后收工回到设置态
+  function pomoAdvance() {
+    if (pomo.phase === 'focus') { pomoEnterPhase('short'); pomoSaveToday(); return true; }
+    if (pomo.round >= POMO_CFG.perLong) { pomoFinish(); return false; }
+    pomo.round += 1;
+    pomoEnterPhase('focus');
+    pomoSaveToday();
+    return true;
+  }
+  function pomoFinish() {
+    pomo.running = false;
+    pomo.sessionOn = false;
+    if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = null; }
+    pomo.phase = 'focus';
+    pomo.round = 1;
+    pomo.total = POMO_SEC('focus');
+    pomo.left = pomo.total;
+    try { floatTipAll('🍅 ' + POMO_CFG.perLong + ' 轮全部完成，休息一下吧', ''); } catch (e) { /* noop */ }
+    pomoRender();
+  }
+  // 停止：整轮作废、回到设置态（× 收起只是隐藏，二者不同）
+  function pomoStop() {
+    try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ }
+    pomo.running = false;
+    if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = null; }
+    pomo.sessionOn = false;
+    pomo.phase = 'focus';
+    pomo.round = 1;
+    pomo.total = POMO_SEC('focus');
+    pomo.left = pomo.total;
+    pomoRender();
+  }
+  // finished=true 表示自然走完：统计番茄数、头顶飘字，并播完"流体落尽 → 清屏 → 换色"的过场
+  function pomoNext(finished) {
+    if (pomo.draining) return;
+    if (!finished) { pomoAdvance(); return; }
+    if (pomo.phase === 'focus') { pomo.today++; pomoSaveToday(); }
+    try { playSfxFile(AUDIO_FILES.pomoPhase); } catch (e) { /* noop */ }   // 阶段完成音效
+    try {
+      floatTipAll(pomo.phase === 'focus' ? '🍅 专注完成！' : '✨ 休息结束，继续加油',
+        pomo.phase === 'focus' ? '' : 'unlock');
+    } catch (e) { /* noop */ }
+    pomo.running = false;
+    if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = null; }
+    pomo.draining = true;
+    pomo.left = 0;
+    pomoRender();
+    const fluid = document.getElementById('pomo-sand');
+    if (fluid) {
+      fluid.style.transition = 'transform .6s cubic-bezier(.55, 0, .9, .45), background .2s ease';
+      fluid.style.transform = 'scaleY(0)';
+    }
+    setTimeout(() => {
+      pomo.draining = false;
+      if (!pomoAdvance()) return;                  // 全部轮次跑完 → 已回到设置态
+      pomoStart();
+    }, 660);
+  }
+  function pomoToggleRun() { try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ } if (pomo.running) pomoPause(); else pomoStart(); }
+  function pomoBackToSetup() {
+    if (pomo.running) pomoPause();
+    pomo.sessionOn = false;
+    const tEl = document.getElementById('pomo-timer');
+    if (tEl) { tEl.style.translate = ''; tEl.style.scale = ''; tEl.style.opacity = ''; }
+    pomoRender();
+  }
+  // ---------------- 设置态：三行参数（↑↓ 选行 · ←→ 改值），箭头在行间丝滑滑动 ----------------
+  const POMO_ROWS = ['focus', 'short', 'rounds'];
+  const POMO_ROW_TOPS = [22.6, 30.9, 38.8];      // 三行中心（%，实测自用户手稿）
+  let pomoSel = 0;
+  function pomoSyncSetup() {
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el && el !== document.activeElement) el.value = v;   // 正在输入的那个不要覆盖
+    };
+    set('ps-focus', POMO_CFG.focus);
+    set('ps-short', POMO_CFG.short);
+    set('ps-rounds', POMO_CFG.perLong);
+    for (let i = 0; i < POMO_ROWS.length; i++) {
+      const row = document.getElementById('ps-row-' + POMO_ROWS[i]);
+      if (row) row.classList.toggle('sel', i === pomoSel);
+    }
+    const top = POMO_ROW_TOPS[Math.min(POMO_ROW_TOPS.length - 1, pomoSel)] + '%';
+    const al = document.getElementById('ps-arw-l'), ar = document.getElementById('ps-arw-r');
+    if (al) al.style.top = top;
+    if (ar) ar.style.top = top;
+  }
+  const PS_RANGE = { focus: [1, 180], short: [1, 60], rounds: [1, 12] };
+  // 数值切换动画：加号往上顶、减号往下落。连按/长按连发时不要重启动画，
+  // 否则数值永远停在起始帧（opacity .25）显得发灰
+  function pomoValFlash(k, dir) {
+    const el = document.getElementById('ps-' + k);
+    if (!el || !dir) return;
+    if (el.classList.contains('up') || el.classList.contains('down')) return;
+    el.classList.remove('up', 'down');
+    void el.offsetWidth;
+    el.classList.add(dir > 0 ? 'up' : 'down');
+    setTimeout(() => { try { el.classList.remove('up', 'down'); } catch (e) { /* noop */ } }, 220);
+  }
+  function pomoApplyVal(k, v, dir) {
+    const rg = PS_RANGE[k] || [1, 999];
+    const n = Math.min(rg[1], Math.max(rg[0], Math.round(Number(v) || rg[0])));
+    if (k === 'rounds') POMO_CFG.perLong = n; else POMO_CFG[k] = n;
+    try { localStorage.setItem('QX_POMOCFG', JSON.stringify(POMO_CFG)); } catch (e) { /* noop */ }
+    pomo.total = POMO_SEC('focus');
+    pomo.left = pomo.total;
+    const el = document.getElementById('ps-' + k);
+    if (el) el.value = n;
+    pomoValFlash(k, dir);
+    pomoRender();
+  }
+  function pomoAdjustSel(d) {
+    const k = POMO_ROWS[pomoSel];
+    const cur = (k === 'rounds') ? POMO_CFG.perLong : POMO_CFG[k];
+    pomoApplyVal(k, cur + d, d);
+  }
+  // 方向键按视图分派：设置态＝选行/改值；计时态＝调时长 / 重置 / 跳过
+  function pomoDir(dir, held) {
+    if (!held) { try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ } }   // 方向键音效（长按连发不重复响）
+    if (!pomo.sessionOn) {
+      if (dir === 'up') { pomoSel = (pomoSel + POMO_ROWS.length - 1) % POMO_ROWS.length; pomoSyncSetup(); }
+      else if (dir === 'down') { pomoSel = (pomoSel + 1) % POMO_ROWS.length; pomoSyncSetup(); }
+      else if (dir === 'left') pomoAdjustSel(-1);
+      else pomoAdjustSel(1);
+      return;
+    }
+    // 计时态：← 重置 / → 跳过 是一次性动作，长按连发会连跳好几个阶段（必须拦掉）
+    if (held && (dir === 'left' || dir === 'right')) return;
+    if (dir === 'up') pomoAdjust(5);
+    else if (dir === 'down') pomoAdjust(-5);
+    else if (dir === 'left') pomoReset();
+    else pomoNext(false);
+  }
+  // ---------------- 大小面板（右键菜单 → 调整大小…）----------------
+  const pomoSizePanel = document.getElementById('pomo-size');
+  const POMO_SCALE_KEY = 'QX_POMOSCALE';
+  function pomoApplyScale(v, save) {
+    const n = Math.min(150, Math.max(60, Math.round(Number(v) || 100)));
+    if (pomoPanel) {
+      pomoPanel.style.transformOrigin = 'top left';
+      pomoPanel.style.transform = (n === 100) ? '' : 'scale(' + (n / 100) + ')';
+    }
+    const rg = document.getElementById('pms-range'), vl = document.getElementById('pms-val');
+    if (rg) rg.value = n;
+    if (vl) vl.textContent = n + '%';
+    if (save) { try { localStorage.setItem(POMO_SCALE_KEY, String(n)); } catch (e) { /* noop */ } }
+    reportHitRects(true);
+  }
+  function showPomoSize(x, y) {
+    if (!pomoSizePanel) return;
+    bringToFront(pomoSizePanel);
+    pomoSizePanel.style.display = 'block';
+    pomoSizePanel.style.left = '0px'; pomoSizePanel.style.top = '0px';
+    const w = pomoSizePanel.offsetWidth, h = pomoSizePanel.offsetHeight, pad = 8;
+    let L = x + pad, T = y + pad;
+    if (L + w > viewW - 8) L = x - w - pad;
+    if (T + h > viewH - 8) T = y - h - pad;
+    pomoSizePanel.style.left = Math.max(8, L) + 'px';
+    pomoSizePanel.style.top = Math.max(8, T) + 'px';
+    reportHitRects(true);
+  }
+  function hidePomoSize() {
+    if (!pomoSizePanel || pomoSizePanel.style.display === 'none') return;
+    pomoSizePanel.style.display = 'none';
+    reportHitRects(true);
+  }
+  // ---------------- 位置记忆 ----------------
+  function pomoSavePos() {
+    if (!pomoPanel) return;
+    try {
+      localStorage.setItem('QX_POMOPOS', JSON.stringify({
+        x: parseInt(pomoPanel.style.left, 10) || 0, y: parseInt(pomoPanel.style.top, 10) || 0
+      }));
+    } catch (e) { /* noop */ }
+  }
+  function pomoLoadPos() {
+    try {
+      const sp = JSON.parse(localStorage.getItem('QX_POMOPOS') || 'null');
+      if (sp && sp.x > 0 && sp.y > 0) return sp;
+    } catch (e) { /* noop */ }
+    return null;
+  }
+  // ---------------- 入场 / 离场动效 ----------------
+  // scale-in 400ms cubic-bezier(.16,1,.3,1) / scale-out 300ms cubic-bezier(.4,0,1,1)
+  // ⚠️ 用独立的 scale 属性而不是 transform —— 面板的 transform 已被"调整大小"占用
+  function pomoPlayIn() {
+    if (!pomoPanel) return;
+    pomoPanel.classList.remove('pomo-out', 'pomo-in');
+    void pomoPanel.offsetWidth;
+    pomoPanel.classList.add('pomo-in');
+    setTimeout(() => { try { pomoPanel.classList.remove('pomo-in'); } catch (e) { /* noop */ } }, 460);
+  }
+  function showPomoPanel(x, y, forceAt) {
+    hideCtxMenu();
+    pomoRender();
+    const sp = forceAt ? null : pomoLoadPos();
+    if (sp) {
+      pomoPanel.style.display = 'block';
+      pomoPanel.style.right = 'auto'; pomoPanel.style.bottom = 'auto';
+      const w = pomoPanel.offsetWidth, h = pomoPanel.offsetHeight;
+      pomoPanel.style.left = Math.max(8, Math.min(viewW - w - 8, sp.x)) + 'px';
+      pomoPanel.style.top = Math.max(8, Math.min(viewH - h - 8, sp.y)) + 'px';
+      bringToFront(pomoPanel);
+      pomoPlayIn();
+      pomoNeedKeyboard(true);
+      return;
+    }
+    openPanelAt(pomoPanel, x === undefined ? lastCtx.x : x, y === undefined ? lastCtx.y : y);
+    pomoSavePos();
+    pomoPlayIn();
+    pomoNeedKeyboard(true);
+  }
+  function hidePomoPanel() {
+    hidePomoMenu(); hidePomoSize();
+    if (!pomoPanel || pomoPanel.style.display === 'none') return;
+    pomoPanel.classList.remove('pomo-in');
+    pomoPanel.classList.add('pomo-out');
+    setTimeout(() => {
+      try { pomoPanel.classList.remove('pomo-out'); pomoPanel.style.display = 'none'; } catch (e) { /* noop */ }
+      pomoNeedKeyboard(false);
+      reportHitRects(true);
+    }, 310);
+  }
+  // ---------------- 番茄钟专属右键菜单 ----------------
+  const pomoMenu = document.getElementById('pomo-menu');
+  function refreshPomoMenu() {
+    const t = document.getElementById('pm-toggle');
+    if (t) t.textContent = pomo.running ? '❚❚ 暂停' : '▶ 开始';
+    const h = document.getElementById('pm-head');
+    if (h) h.textContent = '🍅 番茄钟 · ' + (pomo.sessionOn ? pomoPhaseName() + ' ' + pomoFmt(pomo.left) : '未开始');
+  }
+  function showPomoMenu(x, y) {
+    if (!pomoMenu) return;
+    refreshPomoMenu();
+    bringToFront(pomoMenu);
+    pomoMenu.style.display = 'block';
+    pomoMenu.style.left = '0px'; pomoMenu.style.top = '0px';
+    const w = pomoMenu.offsetWidth, h = pomoMenu.offsetHeight, pad = 8;
+    let L = x + pad, T = y + pad;
+    if (L + w > viewW - 8) L = x - w - pad;
+    if (T + h > viewH - 8) T = y - h - pad;
+    pomoMenu.style.left = Math.max(8, L) + 'px';
+    pomoMenu.style.top = Math.max(8, T) + 'px';
+    reportHitRects(true);
+  }
+  function hidePomoMenu() {
+    if (!pomoMenu || pomoMenu.style.display === 'none') return;
+    pomoMenu.style.display = 'none';
+    reportHitRects(true);
+  }
+  // ---------------- 接线 ----------------
+  // 长按连调：首次 held=false，重复 held=true；420ms 后起步 110ms 一档、越按越快（最低 40ms）
+  function pomoRepeat(el, fn) {
+    if (!el) return;
+    let t0 = null, iv = null;
+    const stop = () => { if (t0) clearTimeout(t0); if (iv) clearTimeout(iv); t0 = iv = null; };
+    el.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      fn(false);
+      t0 = setTimeout(() => {
+        let gap = 110;
+        const tick = () => {
+          fn(true);
+          if (gap > 40) gap -= 10;
+          iv = setTimeout(tick, gap);
+        };
+        iv = setTimeout(tick, gap);
+      }, 420);
+    });
+    el.addEventListener('mouseup', stop);
+    el.addEventListener('mouseleave', stop);
+    window.addEventListener('blur', stop);
+  }
+  // 数值支持直接键盘输入（点一下即可打字；Enter 应用、Esc 撤销、↑↓ 微调）
+  ['focus', 'short', 'rounds'].forEach((k) => {
+    const el = document.getElementById('ps-' + k);
+    if (!el) return;
+    el.addEventListener('mousedown', () => pomoNeedKeyboard(true));
+    el.addEventListener('focus', () => {
+      pomoNeedKeyboard(true);
+      try { el.select(); } catch (e) { /* noop */ }
+    });
+    el.addEventListener('blur', () => {
+      pomoNeedKeyboard(false);
+      pomoApplyVal(k, el.value, 0);
+      pomoSyncSetup();
+    });
+    el.addEventListener('input', () => { el.value = el.value.replace(/[^\d]/g, '').slice(0, 3); });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); pomoSyncSetup(); el.blur(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); pomoApplyVal(k, Number(el.value) + 1, 1); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); pomoApplyVal(k, Number(el.value) - 1, -1); }
+    });
+  });
+  // 点行内其它位置 = 选中该行（箭头滑过去）
+  document.querySelectorAll('.ps-row').forEach((row, i) => {
+    row.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.ps-val')) return;
+      pomoSel = i;
+      pomoSyncSetup();
+    });
+  });
+  if (pomoPanel) {
+    const pt = document.getElementById('pomo-play');
+    if (pt) pt.addEventListener('click', pomoToggleRun);
+    const pst = document.getElementById('pomo-stop');
+    if (pst) pst.addEventListener('click', pomoStop);
+    pomoRepeat(document.getElementById('pomo-up'), (held) => pomoDir('up', held));
+    pomoRepeat(document.getElementById('pomo-down'), (held) => pomoDir('down', held));
+    pomoRepeat(document.getElementById('pomo-reset'), (held) => pomoDir('left', held));
+    pomoRepeat(document.getElementById('pomo-skip'), (held) => pomoDir('right', held));
+    makeDraggable(pomoPanel, document.getElementById('pomo-stage'), pomoSavePos);
+    pomoRender();
+  }
+  if (pomoMenu && pomoPanel) {
+    pomoPanel.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showPomoMenu(e.clientX, e.clientY);
+    });
+    pomoMenu.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); });
+    pomoMenu.addEventListener('mousedown', () => bringToFront(pomoMenu));
+    pomoMenu.addEventListener('click', (e) => {
+      const it = e.target.closest('[data-pm]');
+      if (!it) return;
+      const a = it.getAttribute('data-pm');
+      try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ }
+      hidePomoMenu();
+      if (a === 'toggle') { if (pomo.running) pomoPause(); else pomoStart(); }
+      else if (a === 'reset') pomoReset();
+      else if (a === 'skip') pomoNext(false);
+      else if (a === 'set') pomoBackToSetup();
+      else if (a === 'size') showPomoSize(lastCtx.x, lastCtx.y);
+      else if (a === 'close') hidePomoPanel();
+      else if (a === 'quit') dk.quit();
+    });
+  }
+  if (pomoSizePanel) {
+    const rg = document.getElementById('pms-range');
+    if (rg) rg.addEventListener('input', () => pomoApplyScale(rg.value, true));
+    const rs = document.getElementById('pms-reset');
+    if (rs) rs.addEventListener('click', () => pomoApplyScale(100, true));
+    const cx = document.getElementById('pms-close');
+    if (cx) cx.addEventListener('click', hidePomoSize);
+    makeDraggable(pomoSizePanel, document.getElementById('pms-head'));
+    try { const sv = parseInt(localStorage.getItem(POMO_SCALE_KEY), 10); pomoApplyScale(isFinite(sv) ? sv : 100, false); } catch (e) { /* noop */ }
+  }
+  // ---------------- 调试开关 ----------------
+  if (dk.env('QX_POMO') === '1' && pomoPanel) {
+    const fill = parseFloat(dk.env('QX_POMOFILL') || '');
+    if (fill >= 0 && fill <= 1) {
+      pomo.sessionOn = true;
+      if (dk.env('QX_POMOREST') === '1') { pomo.phase = 'short'; pomo.total = POMO_SEC('short'); }
+      pomo.left = pomo.total * (1 - fill);
+    }
+    const selEnv = parseInt(dk.env('QX_POMOSEL') || '', 10);
+    if (isFinite(selEnv)) setTimeout(() => { try { pomoSel = Math.min(2, Math.max(0, selEnv)); pomoSyncSetup(); } catch (e) { /* noop */ } }, 2300);
+    if (dk.env('QX_POMORUN') === '1') setTimeout(() => { try { pomo.sessionOn = true; pomo.left = pomo.total * 0.42; pomoRender(); } catch (e) { /* noop */ } }, 2200);
+    if (dk.env('QX_POMOSIZE') === '1') setTimeout(() => { try { pomoApplyScale(130, false); showPomoSize(520, 220); } catch (e) { /* noop */ } }, 2400);
+    const typeEnv = dk.env('QX_POMOTYPE');
+    if (typeEnv) setTimeout(() => {
+      try {
+        const el = document.getElementById('ps-focus');
+        el.focus(); el.value = typeEnv;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.blur();
+      } catch (e) { /* noop */ }
+    }, 2600);
+    // QX_POMOSTRESS=1：来回连续切换小屏状态，验证"不会堆字"
+    if (dk.env('QX_POMOSTRESS') === '1') setTimeout(() => {
+      let k = 0;
+      const seq = ['专注模式', '番茄钟', '休息模式', '番茄钟', '专注模式', '番茄钟'];
+      const t = setInterval(() => {
+        if (k >= seq.length) { clearInterval(t); return; }
+        pomoStateText = '　';            // 绕过"同值不重放"的判断，强制切换
+        pomoSetState(seq[k++]);
+      }, 240);
+    }, 2400);
+    // QX_POMOCHEER=focus|short：手动触发一次三小只的阶段反应（截图验收用）
+    const cheerEnv = dk.env('QX_POMOCHEER');
+    if (cheerEnv) setTimeout(() => { try { pomoCheerAt = 0; pomoCheer(cheerEnv); } catch (e) { /* noop */ } }, 2600);
+    if (dk.env('QX_POMOPLUS') === '1') setTimeout(() => { try { pomoAdjustSel(1); } catch (e) { /* noop */ } }, 3000);
+    const holdEnv = parseInt(dk.env('QX_POMOHOLD') || '', 10);
+    if (holdEnv > 0) setTimeout(() => {
+      try {
+        const el = document.getElementById('pomo-skip');
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+        setTimeout(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 })); }, holdEnv);
+      } catch (e) { /* noop */ }
+    }, 2600);
+    setTimeout(() => { try { showPomoPanel(150, 170, true); } catch (e) { /* noop */ } }, 1500);
+    const drainAt = parseInt(dk.env('QX_POMODRAIN') || '', 10);
+    if (drainAt > 0) setTimeout(() => { try { pomoNext(true); } catch (e) { /* noop */ } }, drainAt);
+  }
+
+  // ================= 备忘录（右键菜单 →「📝 备忘录…」） =================
+  const memoPanel = document.getElementById('memo-panel');
+  const MEMO_KEY = 'QX_MEMO';
+  let memoItems = [];
+  let memoSel = null;
+  (function loadMemo() {
+    try {
+      const a = JSON.parse(localStorage.getItem(MEMO_KEY) || '[]');
+      if (Array.isArray(a)) memoItems = a.filter((x) => x && typeof x.text === 'string');
+    } catch (e) { /* noop */ }
+  })();
+  function memoSave() {
+    try { localStorage.setItem(MEMO_KEY, JSON.stringify(memoItems)); } catch (e) { /* noop */ }
+  }
+  function memoEl(id) { return document.getElementById(id); }
+  function memoRender() {
+    const list = memoEl('memo-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!memoItems.length) {
+      const d = document.createElement('div');
+      d.className = 'memo-empty';
+      d.textContent = '还没有待办～在上面输入框写点什么吧';
+      list.appendChild(d);
+    }
+    memoItems.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'memo-item' + (it.done ? ' done' : '') + (it.id === memoSel ? ' sel' : '');
+      row.dataset.id = it.id;
+      const dot = document.createElement('span');
+      dot.className = 'mi-dot'; dot.dataset.act = 'toggle';
+      const txt = document.createElement('span');
+      txt.className = 'mi-txt'; txt.textContent = it.text;
+      const tm = document.createElement('span');
+      tm.className = 'mi-time'; tm.textContent = it.time || '';
+      row.appendChild(dot); row.appendChild(txt); row.appendChild(tm);
+      list.appendChild(row);
+    });
+    // 右侧编辑区跟着选中项走
+    const cur = memoItems.find((x) => x.id === memoSel) || null;
+    const tx = memoEl('memo-text'), ti = memoEl('memo-time'), hh = memoEl('memo-hint');
+    if (tx) { tx.value = cur ? cur.text : ''; tx.disabled = !cur; tx.placeholder = cur ? '改为…' : '点左边一条待办，在这里改内容'; }
+    if (ti) { ti.value = (cur && cur.time) || ''; ti.disabled = !cur; }
+    if (hh) hh.textContent = (cur && cur.time) ? '到点提醒' : '不提醒';
+    ['memo-del', 'memo-clear', 'memo-today'].forEach((id) => {
+      const el = memoEl(id);
+      if (el) el.style.opacity = cur ? '1' : '.45';
+    });
+  }
+  function memoAdd() {
+    const ip = memoEl('memo-input');
+    if (!ip) return;
+    const v = String(ip.value || '').trim();
+    if (!v) return;
+    try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ }
+    const it = { id: 'm' + Date.now() + Math.floor(Math.random() * 1000), text: v, time: '', done: false, fired: false };
+    memoItems.push(it);
+    memoSel = it.id;
+    ip.value = '';
+    memoSave();
+    memoRender();
+  }
+  function memoUpdate(patch) {
+    const cur = memoItems.find((x) => x.id === memoSel);
+    if (!cur) return;
+    Object.assign(cur, patch);
+    memoSave();
+    memoRender();
+  }
+  function memoDelete() {
+    if (!memoSel) return;
+    try { playSfxFile(AUDIO_FILES.uiSelect); } catch (e) { /* noop */ }
+    memoItems = memoItems.filter((x) => x.id !== memoSel);
+    memoSel = memoItems.length ? memoItems[memoItems.length - 1].id : null;
+    memoSave();
+    memoRender();
+  }
+  // 到点提醒：每 20s 看一次，命中就头顶飘字（同一条只提醒一次）
+  setInterval(() => {
+    const now = new Date();
+    const hm = (now.getHours() < 10 ? '0' : '') + now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+    let hit = false;
+    memoItems.forEach((it) => {
+      if (!it.time || it.done || it.fired) return;
+      if (it.time <= hm) {
+        it.fired = true; hit = true;
+        try { floatTipAll('📝 ' + it.text, ''); } catch (e) { /* noop */ }
+      }
+    });
+    if (hit) memoSave();
+  }, 20000);
+  function memoPlayIn() {
+    if (!memoPanel) return;
+    memoPanel.classList.remove('memo-out', 'memo-in');
+    void memoPanel.offsetWidth;
+    memoPanel.classList.add('memo-in');
+    setTimeout(() => { try { memoPanel.classList.remove('memo-in'); } catch (e) { /* noop */ } }, 420);
+  }
+  function showMemoPanel(x, y) {
+    if (!memoPanel) return;
+    hideCtxMenu();
+    memoRender();
+    bringToFront(memoPanel);
+    memoPanel.style.display = 'block';
+    memoPanel.style.left = '0px'; memoPanel.style.top = '0px';
+    const w = memoPanel.offsetWidth, h = memoPanel.offsetHeight, pad = 10;
+    let L = x + pad, T = y + pad;
+    if (L + w > viewW - 8) L = x - w - pad;
+    if (T + h > viewH - 8) T = y - h - pad;
+    memoPanel.style.left = Math.max(8, L) + 'px';
+    memoPanel.style.top = Math.max(8, T) + 'px';
+    memoPlayIn();
+    try { pomoNeedKeyboard(true); } catch (e) { /* noop */ }
+    reportHitRects(true);
+  }
+  function hideMemoPanel() {
+    if (!memoPanel || memoPanel.style.display === 'none') return;
+    memoPanel.classList.remove('memo-in');
+    memoPanel.classList.add('memo-out');
+    setTimeout(() => {
+      try { memoPanel.classList.remove('memo-out'); memoPanel.style.display = 'none'; } catch (e) { /* noop */ }
+      reportHitRects(true);
+    }, 290);
+  }
+  if (memoPanel) {
+    const cx = memoEl('memo-close');
+    if (cx) cx.addEventListener('click', hideMemoPanel);
+    const ab = memoEl('memo-add');
+    if (ab) ab.addEventListener('click', memoAdd);
+    const ip = memoEl('memo-input');
+    if (ip) {
+      ip.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); memoAdd(); } });
+      ip.addEventListener('focus', () => { try { pomoNeedKeyboard(true); } catch (e) { /* noop */ } });
+      ip.addEventListener('blur', () => { try { pomoNeedKeyboard(false); } catch (e) { /* noop */ } });
+    }
+    const list = memoEl('memo-list');
+    if (list) {
+      list.addEventListener('click', (e) => {
+        const row = e.target.closest('.memo-item');
+        if (!row) return;
+        const it = memoItems.find((x) => x.id === row.dataset.id);
+        if (!it) return;
+        if (e.target.closest('[data-act="toggle"]')) { it.done = !it.done; memoSave(); memoRender(); return; }
+        memoSel = it.id;
+        memoRender();
+      });
+    }
+    const tx = memoEl('memo-text');
+    if (tx) {
+      tx.addEventListener('focus', () => { try { pomoNeedKeyboard(true); } catch (e) { /* noop */ } });
+      tx.addEventListener('blur', () => { try { pomoNeedKeyboard(false); } catch (e) { /* noop */ } });
+      tx.addEventListener('change', () => { const v = tx.value.trim(); if (v) memoUpdate({ text: v }); else memoRender(); });
+      tx.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tx.blur(); } });
+    }
+    const ti = memoEl('memo-time');
+    if (ti) {
+      ti.addEventListener('focus', () => { try { pomoNeedKeyboard(true); } catch (e) { /* noop */ } });
+      ti.addEventListener('blur', () => { try { pomoNeedKeyboard(false); } catch (e) { /* noop */ } });
+      ti.addEventListener('change', () => memoUpdate({ time: ti.value || '', fired: false }));
+    }
+    const td = memoEl('memo-today');
+    if (td) td.addEventListener('click', () => {
+      const now = new Date();
+      const hm = (now.getHours() < 10 ? '0' : '') + now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+      memoUpdate({ time: hm, fired: false });
+    });
+    const cl = memoEl('memo-clear');
+    if (cl) cl.addEventListener('click', () => memoUpdate({ time: '', fired: false }));
+    const dl = memoEl('memo-del');
+    if (dl) dl.addEventListener('click', memoDelete);
+    makeDraggable(memoPanel, memoPanel);
+  }
+
+  // 调试：QX_MEMO=1 启动即打开备忘录（截图验收用）
+  if (dk.env('QX_MEMO') === '1' && memoPanel) {
+    if (!memoItems.length) {                    // 空清单时塞两条示例，方便截图验收
+      memoItems = [
+        { id: 'demo1', text: '给三小只换新衣服', time: '09:30', done: false, fired: true },
+        { id: 'demo2', text: '写周报（已完成的样式）', time: '', done: true, fired: true },
+        { id: 'demo3', text: '晚上记得喝水', time: '20:00', done: false, fired: true }
+      ];
+      memoSel = 'demo1';
+    }
+    setTimeout(() => { try { showMemoPanel(150, 170); } catch (e) { /* noop */ } }, 1600);
+  }  // ================= 移动速度面板（右键菜单「🚶 移动速度…」） =================
+  // 三小只共用一个步速；持久化到 localStorage，启动时恢复。
+  const speedPanel = document.getElementById('speed-panel');
+  const wspRange = document.getElementById('wsp-range');
+  const wspVal = document.getElementById('wsp-val');
+  const WALK_SPEED_MIN = 40, WALK_SPEED_MAX = 320, WALK_SPEED_DEF = 130;
+  function applyWalkSpeed(v, save) {
+    const sp = Math.min(WALK_SPEED_MAX, Math.max(WALK_SPEED_MIN, Math.round(Number(v) || WALK_SPEED_DEF)));
+    for (const key of ROLE_KEYS) ROLES[key].walkSpeed = sp;
+    if (wspRange) wspRange.value = sp;
+    if (wspVal) wspVal.textContent = sp;
+    if (save) { try { localStorage.setItem('QX_WALKSPEED', String(sp)); } catch (e) { /* noop */ } }
+    return sp;
+  }
+  (function loadWalkSpeed() {
+    let v = WALK_SPEED_DEF;
+    try { v = parseInt(localStorage.getItem('QX_WALKSPEED'), 10) || WALK_SPEED_DEF; } catch (e) { /* noop */ }
+    applyWalkSpeed(v, false);
+  })();
+  function showSpeedPanel(x, y) {
+    hideCtxMenu();
+    openPanelAt(speedPanel, x === undefined ? lastCtx.x : x, y === undefined ? lastCtx.y : y);
+  }
+  function hideSpeedPanel() { if (speedPanel) speedPanel.style.display = 'none'; }
+  if (wspRange) wspRange.addEventListener('input', () => applyWalkSpeed(wspRange.value, true));
+  const wspClose = document.getElementById('wsp-close');
+  if (wspClose) wspClose.addEventListener('click', hideSpeedPanel);
+  if (speedPanel) makeDraggable(speedPanel, speedPanel.querySelector('.sp-head'));
+
+  // ================= 位置记忆：退出时记住站位，下次启动回到原处 =================
+  const IDOL_POS_KEY = 'QX_IDOL_POS';
+  function saveIdolPositions() {
+    try {
+      const o = {};
+      for (const key of ROLE_KEYS) {
+        const c = idols[key];
+        if (!c) continue;
+        o[key] = { x: Math.round(c.container.x), y: Math.round(c.container.y) };
+      }
+      localStorage.setItem(IDOL_POS_KEY, JSON.stringify(o));
+    } catch (e) { /* noop */ }
+  }
+  function loadIdolPositions() {
+    try { return JSON.parse(localStorage.getItem(IDOL_POS_KEY) || 'null') || null; } catch (e) { return null; }
+  }
+  // 走动时位置一直在变，定期记一次（3 秒；只有真的变了才写）+ 页面隐藏/关闭时补一记
+  let lastPosSig = '';
+  setInterval(() => {
+    try {
+      const sig = ROLE_KEYS.map((k) => (idols[k] ? Math.round(idols[k].container.x) + ',' + Math.round(idols[k].container.y) : '')).join('|');
+      if (sig !== lastPosSig) { lastPosSig = sig; saveIdolPositions(); }
+    } catch (e) { /* noop */ }
+  }, 3000);
+  try { window.addEventListener('pagehide', saveIdolPositions); } catch (e) { /* noop */ }
+  try { window.addEventListener('beforeunload', saveIdolPositions); } catch (e) { /* noop */ }
+
   function showFreqPanel(x, y) {
     hideCtxMenu();   // 面板之间可同时存在
     applyFreq();
@@ -1535,10 +2520,43 @@
   // 保持置顶最上层（窗口级开关；记忆到 localStorage，启动时应用）
   let topmostOn = true;
   try { topmostOn = localStorage.getItem('QX_TOPMOST') !== '0'; } catch (e) { /* noop */ }
+  // 锁定开关：锁上之后三小只不再参与鼠标命中（点击/拖动/右键全部穿透到背后的窗口），
+  // 就像只是"画在桌面上"一样 —— 专门解决打游戏时鼠标误触桌宠的问题。
+  // viaHotkey=true 时会在她们头顶弹一句提示（快捷键操作没有菜单可看，需要即时反馈）。
+  // 浮空提示：三只头顶同时冒出、向上飘散淡出（用于"已锁定/已解锁"这类即时反馈）
+  function floatTipAll(text, cls) {
+    for (const key of ROLE_KEYS) {
+      const c = idols[key];
+      if (!c || c.hidden) continue;
+      try {
+        const el = document.createElement('div');
+        el.className = 'float-tip' + (cls ? ' ' + cls : '');
+        el.textContent = text;
+        const r = idolScreenRect(key);
+        el.style.left = Math.round(r.x + r.w / 2) + 'px';   // 水平居中于角色
+        el.style.top = Math.round(r.y - 4) + 'px';          // 从头顶上方冒出
+        document.body.appendChild(el);
+        setTimeout(() => { try { el.remove(); } catch (e) { /* noop */ } }, 1700);
+      } catch (e) { /* noop */ }
+    }
+    try { reportHitRects(true); } catch (e) { /* noop */ }
+  }
+  function setIdolLocked(on, viaHotkey) {
+    idolLocked = !!on;
+    try { localStorage.setItem('QX_LOCK', idolLocked ? '1' : '0'); } catch (err) { /* noop */ }
+    try { refreshCtxMenu(); } catch (e) { /* noop */ }
+    // 锁定后立即把窗口区域上报为空集合，鼠标马上就能穿透（不用等下一次轮询）
+    try { reportHitRects(true); } catch (e) { /* noop */ }
+    if (viaHotkey) {
+      // 头顶飘字（不用气泡：气泡是"对话"语义，而且会被下一次对话顶掉）
+      try { floatTipAll(idolLocked ? '🔒 已锁定' : '🔓 已解锁', idolLocked ? '' : 'unlock'); } catch (e) { /* noop */ }
+    }
+    return idolLocked;
+  }
   function refreshCtxMenu() {
     // 与重力/置顶统一为「名称：开/关（说明）」的状态式写法。旧文案未锁时显示「取消锁定」，
     // 读起来像动作，点下去却是上锁，与字面相反。
-    ctxLockItem.textContent = idolLocked ? '🔒 锁定：开（禁止拖动）' : '🔓 锁定：关（可拖动）';
+    ctxLockItem.textContent = idolLocked ? '🔒 锁定：开（鼠标穿透不可交互）' : '🔓 锁定：关（可拖动/可点击）';
     ctxGravityItem.textContent = gravityOn ? '🌍 重力：开（落地+可甩飞）' : '🌍 重力：关（悬浮走动）';
     if (ctxTopmostItem) ctxTopmostItem.textContent = topmostOn ? '📌 保持置顶：开' : '📌 保持置顶：关';
     const hasRole = !!ctxRole;
@@ -1603,6 +2621,9 @@
     if (act === 'interact') { if (ctxRole) interact(ctxRole); }
     else if (act === 'story') { if (ctxRole) openTrainDialog(ctxRole); }
     else if (act === 'freq') showFreqPanel(lastCtx.x, lastCtx.y);
+    else if (act === 'pomo') showPomoPanel(lastCtx.x, lastCtx.y);
+    else if (act === 'memo') showMemoPanel(lastCtx.x, lastCtx.y);
+    else if (act === 'speed') showSpeedPanel(lastCtx.x, lastCtx.y);
     else if (act === 'gravity') {
       gravityOn = !gravityOn;
       saveGravity();
@@ -1615,10 +2636,7 @@
     else if (act === 'chat') { if (ctxRole) openChatPanel(ctxRole); }
     else if (act === 'size1') { if (ctxRole) showSizePanel(ctxRole); }
     else if (act === 'sizeall') showSizePanel('all');
-    else if (act === 'lock') {
-      idolLocked = !idolLocked;
-      try { localStorage.setItem('QX_LOCK', idolLocked ? '1' : '0'); } catch (err) { /* noop */ }
-    }
+    else if (act === 'lock') setIdolLocked(!idolLocked, false);
     else if (act === 'topmost') {
       topmostOn = !topmostOn;
       try { localStorage.setItem('QX_TOPMOST', topmostOn ? '1' : '0'); } catch (err) { /* noop */ }
@@ -1653,7 +2671,7 @@
   document.addEventListener('contextmenu', (e) => {
     // 浮层（聊天面板/气泡输入/历史/其他面板/菜单/对话框）内：不弹全局主菜单
     // （输入框的右键菜单由 input 自身 contextmenu 处理）
-    if (e.target.closest('#chat-panel,#bubble-chat,#bc-history,#ctx-menu,#dialog,#size-panel,#freq-panel,#vol-panel,#music-panel,#input-ctx')) {
+    if (e.target.closest('#chat-panel,#bubble-chat,#bc-history,#ctx-menu,#pomo-menu,#memo-panel,#dialog,#size-panel,#freq-panel,#vol-panel,#music-panel,#input-ctx')) {
       e.preventDefault();
       return;
     }
@@ -1911,7 +2929,9 @@
     }, holdMs);
   }
   function showBubbleTyping(text, holdMs, role) {
-    const takeover = bubbleThinking;   // thinking → typing 无缝接管（不闪烁、不重开）
+    // 换人说话 → 抢占接管（互聊轮流发言时，上一句的长气泡不能把下一句憋住）
+    const preemptRole = !!(bubbleLock && role && bubbleRole && role !== bubbleRole);
+    const takeover = bubbleThinking || preemptRole;   // thinking → typing 无缝接管（不闪烁、不重开）
     if (bubbleTypingTimer) { clearTimeout(bubbleTypingTimer); bubbleTypingTimer = null; }
     if (!takeover) {
       if (bubbleLock) return false;
@@ -1920,6 +2940,9 @@
       if (role) bubbleRole = role;
       popover.textContent = '';
       popover.classList.add('show');
+    } else if (preemptRole && role) {
+      bubbleRole = role;     // 抢占者成为"当前发言者"
+      bubbleIsChat = true;
     }
     if (bubbleHideTimer) { clearTimeout(bubbleHideTimer); bubbleHideTimer = null; }
     bubbleThinking = false;
@@ -1933,8 +2956,8 @@
       if (i < text.length) bubbleTypingTimer = setTimeout(step, 36);
       else {
         bubbleTypingTimer = null;
-        // 规则：聊天仍打开 → 气泡保持显示；聊天已关闭 → 停留 5 秒后关闭（原 3 秒，用户反馈太快）
-        scheduleBubbleHide(5000);
+        // 规则：聊天仍打开 → 气泡保持显示；聊天已关闭 → 按文本长度决定停留（越长留越久）
+        scheduleBubbleHide(bubbleHoldMs(text, holdMs));
       }
     };
     step();
@@ -2154,7 +3177,7 @@
   // 点击浮层外部 → 关闭（用户要求）：
   //   · 右键菜单：点菜单外任何地方即关闭（原先只能点 ✕）
   //   · 从菜单打开的面板（大小/频率/音量/互聊设置）：同样点外部关闭
-  //   · 例外：**音乐播放器**保持常驻（用户明确要求），输入框右键菜单、聊天/对话框不受影响
+  //   · 例外：**音乐播放器 / 番茄钟**保持常驻（用户明确要求），输入框右键菜单、聊天/对话框不受影响
   window.addEventListener('mousedown', (e) => {
     if (inputCtx.style.display !== 'none' && !inputCtx.contains(e.target)) hideInputCtx();
     if (ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) hideCtxMenu();
@@ -2162,6 +3185,9 @@
       [sizePanel, hideSizePanel],
       [freqPanel, hideFreqPanel],
       [volPanel, hideVolPanel],
+      [speedPanel, hideSpeedPanel],
+      [pomoMenu, hidePomoMenu],
+      [pomoSizePanel, hidePomoSize],
       [chatterPanel, hideChatterPanel]
     ];
     for (const [el, hide] of closers) {
@@ -2421,6 +3447,9 @@
       if (r.width < 2 || r.height < 2) return;
       rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
     };
+    // 注意：锁定状态**仍然要上报角色矩形** —— 它同时是"窗口形状"（决定画不画得全），
+    // 清空会让系统把三小只裁掉（用户实测"锁定后显示不全"）。
+    // 锁定只是"不参与鼠标可交互判定"，靠 payload.noInteract 单独告诉主进程。
     for (const key of ROLE_KEYS) {
       // 资源已释放（!state）期间不参与命中判定——她还没恢复出来，避免点到"看不见的她"
       if (idols[key] && !idols[key].hidden && idols[key].state) {
@@ -2430,7 +3459,9 @@
     }
     // 浮层全部纳入窗口区域（漏掉任何一个都会被"窗口形状"裁掉）
     // popover = 普通气泡（待机对话/互动台词）；用户实测担心"文本过多被裁" → 必须包含
-    for (const el of [popover, sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel, inputCtx]) push(el);
+    for (const el of [popover, sizePanel, freqPanel, volPanel, speedPanel, pomoPanel, pomoMenu, pomoSizePanel, memoPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel, inputCtx]) push(el);
+    // 浮空提示也要纳入窗口形状，否则升到高处会被裁掉
+    try { document.querySelectorAll('.float-tip').forEach((el) => push(el)); } catch (e) { /* noop */ }
     if (dialog.open) push(dEl);
     return rects;
   }
@@ -2458,13 +3489,16 @@
     // → 窗口永久处于可交互态（不再点击穿透）。
     // 改用计算样式，准确反映真实可见性。
     const isOpen = (el) => !!el && getComputedStyle(el).display !== 'none';
-    const modalOpen = isOpen(ctxMenu) || isOpen(sizePanel) || isOpen(volPanel) ||
-      isOpen(freqPanel) || isOpen(chatterPanel);
+    // ⚠️ 只放"点外部即关闭"的瞬态浮层。番茄钟是常驻面板，绝不能进来：
+    // forceInteractive 会让主进程把整窗都判为命中（mousePollTick 里 inside = hitForceInteractive），
+    // 于是 1708×912 的透明大窗处处可点 → 挡住后面所有窗口、右键还会落到三小只主菜单（用户实测）。
+    const modalOpen = isOpen(ctxMenu) || isOpen(pomoMenu) || isOpen(pomoSizePanel) || isOpen(sizePanel) ||
+      isOpen(volPanel) || isOpen(freqPanel) || isOpen(speedPanel) || isOpen(chatterPanel);
     const forceInteractive = !!(drag.on || editMsgIndex != null || modalOpen);
     const moving = anyIdolPhysicallyMoving();
     if (!force && json === lastRectsJson && !forceInteractive && !moving) return;
     lastRectsJson = json;
-    try { dk.sendHitRects(rects, forceInteractive, mouseEventCount, moving); } catch (e) { /* noop */ }
+    try { dk.sendHitRects(rects, forceInteractive, mouseEventCount, moving, idolLocked); } catch (e) { /* noop */ }
   }
   setInterval(() => reportHitRects(false), 150);   // 角色走动/动画 → 矩形小幅变化，周期性上报
   // 拖动/编辑/物理运动（重力甩飞/下落）中把上报频率提到 ~50ms：
@@ -2476,7 +3510,7 @@
   function refreshMouseIgnore() {
     if (lastMouse.x < 0) { reportHitRects(true); return false; }
     let inside = false;
-    for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel]) {
+    for (const el of [sizePanel, freqPanel, volPanel, speedPanel, pomoPanel, pomoMenu, pomoSizePanel, memoPanel, musicPanel, ctxMenu, cpEl, bcEl, bcHist, chatterPanel]) {
       if (!el || el.style.display === 'none') continue;
       const r = el.getBoundingClientRect();
       if (lastMouse.x >= r.left - 4 && lastMouse.x <= r.right + 4 &&
@@ -2559,7 +3593,7 @@
     });
   } catch (e) { /* noop */ }
   // 是否有任何浮层打开（空闲降帧 / 全隐藏暂停判断用）
-  // ⚠️ 不能用 `style.display !== 'none'`：未打开的元素 display 是空字符串（''），会被误判为"已打开"
+  // ⚠️ 不能用 style.display !== 'none'：未打开的元素 display 是空字符串（''），会被误判为"已打开"
   //    → 导致"全隐藏暂停渲染"永远不触发（用户实测：隐藏全部后占用仍高）。改用"是否真有尺寸"。
   function isAnyOverlayOpen() {
     const els = [ctxMenu, sizePanel, freqPanel, volPanel, musicPanel, chatterPanel, cpEl, bcEl, bcHist, inputCtx];
@@ -2578,8 +3612,8 @@
     for (const key of ROLE_KEYS) {
       const c = idols[key];
       const t0 = c.state ? c.state.tracks[0] : null;   // 资源已释放（隐藏优化）时 state 为 null
-      lines.push(`${key}: ${c.container.x.toFixed(0)},${c.container.y.toFixed(0)} dir=${c.dir} walk=${c.walking}` +
-        ` pose=${c.poseId} hid=${c.hidden ? 1 : 0} fz=${chatFrozen[key] ? 1 : 0} t0=${t0 ? t0.animation.name + '@' + t0.trackTime.toFixed(2) : '-'}`);
+      lines.push(`${key}: ${c.container.x.toFixed(0)},${c.container.y.toFixed(0)} dir=${c.dir} walk=${c.walking} ` +
+         `pose=${c.poseId} hid=${c.hidden ? 1 : 0} fz=${chatFrozen[key] ? 1 : 0} t0=${t0 ? t0.animation.name + '@' + t0.trackTime.toFixed(2) : '-'}`);
     }
     hud.textContent = lines.join('\n');
   }
@@ -2647,7 +3681,7 @@
         const busy = idolPhysicallyBusy(key);
         if (c.physWasBusy && !busy) {
           // 落地停稳 → 只恢复"物理姿势"（被拎/飞行/反弹）。
-          // ⚠️ 判据必须是**显式标记 `c.motionPhase`**，不能靠动画名：
+          // ⚠️ 判据必须是**显式标记 c.motionPhase**，不能靠动画名：
           //   物理姿势名（兴奋/害羞/生气/无奈/心累…）与待机对话姿势名**完全重叠**，
           //   按名字判断会把"对话姿势"误清 → 姿势刚播一帧就变回待机（用户实测 bug）。
           if (c.motionPhase) clearIdolFace(key);
@@ -2698,25 +3732,35 @@
       if (sm) dk.setScreenMode(sm);
     } catch (e) { /* noop */ }
 
-    // 初始站位（下沿分布：22% / 50% / 78%）
+    // 初始站位：优先回到"上次记住的位置"（换分辨率/换屏时做边界钳制），没有记忆才用默认分布
     resize();
+    const savedPos = loadIdolPositions();
     for (const key of ROLE_KEYS) {
       const c = idols[key];
       const footUp = viewH * 0.16 - 14;
-      c.container.x = viewW * ROLES[key].deskX;
-      c.container.y = footUp;
+      let x0 = viewW * ROLES[key].deskX;
+      let y0 = footUp;
+      const sp = savedPos && savedPos[key];
+      if (sp && isFinite(sp.x) && isFinite(sp.y)) {
+        x0 = Math.min(Math.max(40, Number(sp.x)), Math.max(40, viewW - 40));
+        y0 = Math.min(Math.max(0, Number(sp.y)), Math.max(0, viewH - 20));
+      }
+      c.container.x = x0;
+      c.container.y = y0;
       ROLES[key].waypoints = [
-        { x: Math.max(60, c.container.x - 110), y: footUp, dir: -1 },
-        { x: Math.min(viewW - 60, c.container.x + 150), y: footUp, dir: 1 }
+        { x: Math.max(60, x0 - 110), y: y0, dir: -1 },
+        { x: Math.min(viewW - 60, x0 + 150), y: y0, dir: 1 }
       ];
     }
 
     // 交互 & 键盘
     // 浮动 UI 聚焦置顶：点击哪个面板/菜单/对话框，哪个就到最前
-    for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, dEl, cpEl, bcEl, bcHist, chatterPanel]) {
+    for (const el of [sizePanel, freqPanel, volPanel, musicPanel, ctxMenu, pomoPanel, pomoMenu, pomoSizePanel, memoPanel, dEl, cpEl, bcEl, bcHist, chatterPanel]) {
       el.addEventListener('mousedown', () => bringToFront(el));
     }
     dk.onInteract(() => { const key = hitIdol(lastCtx.x, lastCtx.y) || 'qianxia'; interact(key); });
+  // 全局快捷键（主进程注册）→ 切换锁定，并在头顶弹一句提示
+  try { dk.onLock(() => setIdolLocked(!idolLocked, true)); } catch (e) { /* noop */ }
     dk.onTrainEvent(() => openTrainDialog('qianxia'));
     dk.onSizePanel(() => showSizePanel());
     dk.onFreqPanel(() => showFreqPanel());

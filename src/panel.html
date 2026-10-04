@@ -76,6 +76,8 @@
     border-color: #e0559a; color: #d0408a;
     box-shadow: 0 4px 12px rgba(224,85,154,.3);
   }
+  .sidebar-sep { margin-top: auto; width: 26px; height: 2px; border-radius: 2px; background: rgba(224,85,154,.28); }
+  #btn-console { margin-bottom: 14px; }
   #content { flex: 1; overflow: hidden; position: relative; }
   .view { position: absolute; inset: 0; padding: 14px 20px 10px; }
   .view-swap { animation: viewIn .22s cubic-bezier(.2,.9,.3,1.05); }
@@ -191,10 +193,6 @@
   .ai-row.nowrap > input[type=text] { flex: 1 1 auto; min-width: 0; }
   .bar-wrap { height: 8px; background: #efe3ea; border-radius: 5px; overflow: hidden; margin-top: 8px; }
   #tts-install-bar { height: 100%; width: 0%; background: #e0559a; transition: width .2s; }
-  .logbox {
-    display: none; max-height: 220px; overflow: auto; background: #221c21; color: #d9d1d7;
-    border-radius: 10px; padding: 10px; font: 11px/1.55 monospace; white-space: pre-wrap; margin-top: 8px;
-  }
   .adv-area { flex: 1 1 auto; min-width: 0; height: 70px; font: 11px/1.5 monospace; resize: vertical; }
   .ai-row > label { flex: 0 0 110px; font: 600 13px/1.4 "Microsoft YaHei"; color: #7a6a74; }
   .ai-row input[type=text], .ai-row input[type=password], .ai-row select, .ai-row input[type=number] {
@@ -231,12 +229,130 @@
   #ai-test-rslt.ok { color: #2e9e6b; }
   #ai-test-rslt.bad { color: #c05050; }
   #ai-status { text-align: center; font: 400 11px/1.6 "Microsoft YaHei"; color: #b09aa8; }
+
+  /* ===== 圆形悬浮保存按钮：只在当前页真的有未保存改动时出现 ===== */
+  #fab-save {
+    position: absolute; right: 22px; bottom: 20px; z-index: 60;
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #f06aa8, #d0408a); color: #fff;
+    border: 2px solid #fff; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(208, 64, 138, .38);
+    opacity: 0; transform: translateY(14px) scale(.85); pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease, background .2s ease, box-shadow .18s ease;
+  }
+  #fab-save.show { opacity: 1; transform: none; pointer-events: auto; }
+  #fab-save:hover { box-shadow: 0 10px 26px rgba(208, 64, 138, .5); transform: scale(1.07); }
+  #fab-save.done { background: linear-gradient(135deg, #4cc38a, #2e9e6b); }
+  #fab-save::before {
+    content: '保存并应用'; position: absolute; right: 64px; top: 50%; transform: translateY(-50%);
+    background: rgba(72, 54, 66, .93); color: #fff; font: 600 11.5px/1 "Microsoft YaHei";
+    padding: 8px 10px; border-radius: 8px; white-space: nowrap;
+    opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  }
+  #fab-save:hover::before { opacity: 1; }
+  /* 有未保存改动时轻微呼吸，避免用户没注意到 */
+  #fab-save.show { animation: fabPulse 2s ease-in-out infinite; }
+  @keyframes fabPulse { 0%, 100% { box-shadow: 0 8px 20px rgba(208,64,138,.38); } 50% { box-shadow: 0 8px 26px rgba(208,64,138,.66); } }
+  /* 留出底部空间，别被悬浮按钮压住内容 */
+  #view-settings, #view-ai { padding-bottom: 78px; }
+
+  /* 下载源可用性标记（检测后直接标在镜像按钮上） */
+  .mirror-ok { box-shadow: inset 0 0 0 2px #9fe0bd; }
+  .mirror-bad { opacity: .45; text-decoration: line-through; }
+  .mirror-ms { font: 700 9.5px/1 "Microsoft YaHei"; color: #2e9e6b; margin-left: 4px; }
+
+  /* 路径输入框右侧的存在性标记（✅ 文件在 / ⚠ 找不到） */
+  .path-flag { flex: none; font: 700 12px/1 "Microsoft YaHei"; min-width: 14px; text-align: center; }
+
+  /* ===== 控制台页：信息页 ←→ 终端页 的丝滑切换 ===== */
+  .console-cards { transition: opacity .3s ease, transform .3s ease; }
+  #view-console.term-on .console-cards { opacity: 0; transform: scale(.97); pointer-events: none; }
+  .term-wrap {
+    position: absolute; inset: 14px 20px 14px 20px; border-radius: 12px; overflow: hidden;
+    background: #17131a; border: 2px solid #2c2430;
+    box-shadow: 0 10px 30px rgba(40, 20, 35, .35);
+    opacity: 0; transform: translateY(14px) scale(.98); pointer-events: none;
+    transition: opacity .3s ease, transform .3s cubic-bezier(.2,.9,.3,1.05);
+    display: flex; flex-direction: column;
+  }
+  #view-console.term-on .term-wrap { opacity: 1; transform: none; pointer-events: auto; }
+  .term-bar {
+    display: flex; align-items: center; gap: 7px; flex: none;
+    padding: 8px 12px; background: #221c26; border-bottom: 1px solid #2c2430;
+  }
+  .term-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .term-title { font: 600 11.5px/1 "Microsoft YaHei"; color: #b9aeb8; margin-left: 4px; }
+  .term-tip { margin-left: auto; font: 400 10.5px/1 "Microsoft YaHei"; color: #6f6472; }
+  .term-body {
+    flex: 1; overflow: auto; padding: 10px 13px 14px;
+    font: 11.5px/1.55 Consolas, "Cascadia Mono", "Courier New", monospace;
+    color: #cfc7cf; white-space: pre-wrap; word-break: break-all;
+  }
+  .term-body > div { min-height: 1.55em; }
+  .tl-time { color: #6b6270; }
+  .tl-info { color: #c9d1d9; }
+  .tl-err  { color: #ff7b72; }
+  .tl-warn { color: #f0c674; }
+  .tl-diag { color: #79d0ff; }
+  .tl-tts  { color: #e39ff6; }
+  .tl-url  { color: #7aa2f7; }
+  .tl-ok   { color: #7ee787; }
+  .tl-head { color: #7ee787; font-weight: 700; }
+  .tl-dim  { color: #8b8b95; }
+
+  /* ===== 控制台页：键值信息栅格 ===== */
+  .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; margin-top: 4px; }
+  .kv { display: flex; align-items: baseline; gap: 8px; min-width: 0; font: 500 12px/1.6 "Microsoft YaHei"; }
+  .kv > span { color: #a9929f; flex: none; }
+  .kv > b { color: #4a3a45; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv.wide { grid-column: 1 / -1; }
+  .kv.wide > b { white-space: normal; overflow: visible; text-overflow: clip; font-weight: 600; color: #6b5866; }
+  .kv > b.ok { color: #2e9e6b; }
+  .kv > b.warn { color: #c05050; }
+
+  /* ===== 快捷键页 ===== */
+  .keys-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .keys-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 9px 11px; border: 2px solid #f0e4ee; border-radius: 12px; background: #fffdfe;
+  }
+  .keys-row .k-name { flex: 0 0 92px; font: 700 12.5px/1.4 "Microsoft YaHei"; color: #4a3a45; }
+  .keys-row .k-btn {
+    flex: none; cursor: pointer; min-width: 136px; text-align: center;
+    font: 700 12px/1 Consolas, "Microsoft YaHei", monospace;
+    padding: 8px 12px; border-radius: 9px; border: 2px solid #e8dbe6;
+    background: #fff; color: #d0408a;
+  }
+  .keys-row .k-btn:hover { border-color: #f5c0da; }
+  .keys-row .k-btn.listening { background: #fff3d6; border-color: #f0c674; color: #a5741a; }
+  .keys-row .k-flag { flex: none; font: 700 11px/1.4 "Microsoft YaHei"; }
+  .keys-row .k-flag.ok { color: #2e9e6b; }
+  .keys-row .k-flag.bad { color: #c05050; }
+  .keys-row .k-desc { flex: 1 1 190px; min-width: 0; font: 400 11.5px/1.5 "Microsoft YaHei"; color: #a9929f; }
+
+  /* ===== 悬浮说明小组件：细节文字统一收进这里，界面不再堆字 ===== */
+  .hint-i {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; flex: none;
+    background: #f7d9e8; color: #b4557a; margin-left: 5px;
+    font: 700 10px/1 "Microsoft YaHei"; cursor: help;
+  }
+  .hint-i:hover { background: #f0bcd6; color: #96345f; }
+  #tip {
+    position: fixed; z-index: 9999; max-width: 340px;
+    background: rgba(72, 54, 66, .96); color: #fff;
+    font: 500 11.5px/1.7 "Microsoft YaHei";
+    padding: 8px 11px; border-radius: 10px; display: none;
+    box-shadow: 0 8px 22px rgba(90, 40, 70, .3);
+    pointer-events: none; white-space: pre-line;
+  }
 </style>
 </head>
 <body>
   <div id="titlebar">
     <div>
-      <div class="t-title" id="t-title">🎀 妄想天使 · 控制台</div>
+      <div class="t-title" id="t-title">🎀 妄想天使 · 主页</div>
       <div class="t-sub" id="t-sub">分别控制三小只的桌宠开关（关掉后她会去休息哦～）</div>
     </div>
     <div style="display:flex;align-items:center;">
@@ -260,10 +376,32 @@
           <circle cx="16" cy="11" r="1" fill="currentColor" stroke="none"/>
         </svg>
       </div>
+      <div class="sidebar-btn" id="btn-voice" title="语音合成">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5.5 11.5 a6.5 6.5 0 0 0 13 0"/>
+          <path d="M12 18 V21"/>
+        </svg>
+      </div>
       <div class="sidebar-btn" id="btn-settings" title="设置">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3.2"/>
           <path d="M12 2.5 V5.5 M12 18.5 V21.5 M2.5 12 H5.5 M18.5 12 H21.5 M5.2 5.2 L7.3 7.3 M16.7 16.7 L18.8 18.8 M18.8 5.2 L16.7 7.3 M7.3 16.7 L5.2 18.8"/>
+        </svg>
+      </div>
+      <div class="sidebar-btn" id="btn-keys" title="快捷键（自定义全局快捷键）">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.5" y="6" width="19" height="12" rx="2.5"/>
+          <path d="M6.5 10 H6.6 M10.5 10 H10.6 M14.5 10 H14.6 M6.5 13.6 H6.6 M17.5 10 H17.6"/>
+          <path d="M10 13.8 H14"/>
+        </svg>
+      </div>
+      <div class="sidebar-sep"></div>
+      <div class="sidebar-btn" id="btn-console" title="控制台（后台信息 / 日志 / 诊断）">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+          <path d="M7.5 9.5 L10.5 12 L7.5 14.5"/>
+          <path d="M13 15 H16.5"/>
         </svg>
       </div>
     </div>
@@ -281,7 +419,7 @@
             <input type="checkbox" id="sys-autolaunch" style="accent-color:#e0559a;width:16px;height:16px;margin-left:6px;vertical-align:-3px;">
           </div>
         </div>
-        <div id="hintline">✕ 关闭本窗口不会停止桌宠（最小化到系统托盘） · 托盘点图标可随时找回 · <span id="sys-autolaunch-hint">开机自启动可在此开关</span></div>
+        <div id="hintline">✕ 关闭本窗口不会停止桌宠<span class="hint-i" data-tip="「✕」只是把控制台最小化到系统托盘，桌宠继续在后台运行；&#10;点托盘图标可随时找回本窗口。&#10;要让三小只彻底退出，请点右上角的「退出桌宠」。">?</span></div>
         <div id="deco">
           <span class="deco-note" style="--d:0s">🎵</span>
           <span class="deco-note" style="--d:.7s">♪</span>
@@ -336,17 +474,14 @@
             </select>
           </div>
           <div class="ai-row check">
-            <label>联网模式</label>
-            <input type="checkbox" id="ai-web" title="开启后使用联网版人设（被问到人设外信息会主动联网搜索）">
-            <span class="ai-hint">人设外知识自动联网搜索（服务端 web_search）</span>
+            <label>联网模式<span class="hint-i" data-tip="开启后，问到三小只人设以外的知识时，会由服务端自动联网搜索（web_search）再回答。&#10;关闭则完全靠模型自身知识，不联网。">?</span></label>
+            <input type="checkbox" id="ai-web">
+            <span class="ai-hint">人设外知识联网搜索</span>
           </div>
           <div class="ai-row check">
-            <label>保存历史对话</label>
+            <label>保存历史对话<span class="hint-i" data-tip="对话记录存在本地 data/chat_*.json，按角色分开；下次打开会接着上次聊。&#10;在下面「测试与清理」里可以按角色清空。">?</span></label>
             <input type="checkbox" id="ai-history" checked>
-            <span class="ai-hint">存在本地 data/chat_*.json，下次接上</span>
-          </div>
-          <div style="margin-top:14px;">
-            <button class="ai-btn pink" id="ai-save" style="width:100%;padding:10px 0;font-size:13px;">💾 保存配置（立即生效）</button>
+            <span class="ai-hint">下次接着聊</span>
           </div>
         </div>
         <div class="ai-card">
@@ -363,7 +498,7 @@
       </div>
       <!-- 设置视图 -->
       <div id="view-settings" class="view" style="display:none;">
-        <div class="ai-card">
+        <div class="ai-card" data-page="settings">
           <h3>🔄 版本与更新</h3>
           <div class="ai-btns" style="margin:0;">
             <button class="ai-btn pink small" id="tts-check-update">🔄 检测更新</button>
@@ -372,47 +507,73 @@
           <div class="ai-hint" id="update-result" style="margin-top:8px;">点击「检测更新」查询项目仓库的最新版本与更新日志</div>
           <pre id="update-log" style="display:none;max-height:160px;overflow:auto;background:#faf3f7;border-radius:8px;padding:8px;font:11px/1.5 monospace;white-space:pre-wrap;margin-top:8px;color:#5a4a54;"></pre>
         </div>
-        <div class="ai-card">
-          <h3>🎙 语音（TTS · 本地合成）</h3>
+        <!-- ===== 快捷键页 ===== -->
+        <div class="ai-card" data-page="keys">
+          <h3>⌨ 全局快捷键<span class="hint-i" data-tip="全局快捷键在任何窗口下都生效（打游戏时也能用）。&#10;&#10;点击键位按钮 → 直接按下你想要的新组合即可，Esc 取消。&#10;若提示「已被占用」，说明那个组合被别的软件抢走了，换一个就行。&#10;&#10;锁定后右键菜单也点不出来，所以锁定键一定要记住。">?</span></h3>
+          <div id="keys-list" class="keys-list"></div>
+          <div class="ai-btns" style="margin-top:10px;">
+            <button class="ai-btn small" id="keys-reset">↺ 恢复默认快捷键</button>
+          </div>
+          <div class="ai-hint" id="keys-msg" style="margin-top:6px;"></div>
+        </div>
 
-          <!-- 状态概览 -->
-          <div class="tts-status" id="tts-status-line">状态：加载中…</div>
-          <div class="ai-row check">
-            <label>启用语音</label>
+        <!-- ===== 语音页 · 1 状态（实时更新，无需手动检测） ===== -->
+        <div class="ai-card" data-page="voice">
+          <h3>📡 语音状态<span class="hint-i" data-tip="状态自动实时更新，不需要手动检测。&#10;服务未运行 / 未安装时语音会静默降级，聊天功能完全不受影响。">?</span></h3>
+          <div class="kv-grid">
+            <div class="kv"><span>服务状态</span><b id="ts-service">—</b></div>
+            <div class="kv"><span>推理设备</span><b id="ts-device">—</b></div>
+            <div class="kv"><span>推理环境<span class="hint-i" data-tip="检测的是「启动服务时实际会用的那一套」：先看你下面配置的运行时与脚本，再看托管数据目录。&#10;输入框右侧的小标记会直接告诉你这个文件到底存不存在。">?</span></span><b id="ts-runtime">—</b></div>
+            <div class="kv"><span>语音包</span><b id="ts-voices">—</b></div>
+          </div>
+          <div class="ai-btns" style="margin-top:10px;">
+            <button class="ai-btn pink small" id="tts-start">▶ 启动服务</button>
+            <button class="ai-btn small" id="tts-stop">■ 停止服务</button>
+            <button class="ai-btn small" id="tts-open-cache">📂 音频目录</button>
+          </div>
+          <div class="ai-hint" id="ts-extra" style="margin-top:6px;"></div>
+          <div class="ai-row check" style="margin-top:6px;">
+            <label>启用语音<span class="hint-i" data-tip="总开关。勾选后语音功能才可用（还要保存并重启服务）。&#10;未安装推理环境时会静默降级，不影响文字聊天。">?</span></label>
             <input type="checkbox" id="tts-enabled">
-            <span class="ai-hint">默认关闭；未安装时静默降级，不影响聊天</span>
+            <span class="ai-hint">总开关，默认关闭</span>
           </div>
+        </div>
 
-          <!-- 一、运行环境 -->
-          <div class="sub-title">运行环境</div>
-          <div class="ai-row">
-            <label>推理设备</label>
-            <div class="ai-btns" id="tts-device" style="flex:1;margin:0;">
-              <button class="ai-btn small tts-device-btn" data-device="cuda">GPU（快）</button>
-              <button class="ai-btn small tts-device-btn" data-device="cpu">CPU（省显存）</button>
-            </div>
-          </div>
+        <!-- ===== 语音页 · 2 运行环境 ===== -->
+        <div class="ai-card" data-page="voice">
+          <h3>🧩 运行环境<span class="hint-i" data-tip="推理环境 = 便携版 Python 运行时 + GPT-SoVITS 服务脚本。&#10;如果你已经把环境装在别处，直接在这里填路径即可（不需要再下载一遍 5GB 多的包）。">?</span></h3>
           <div class="ai-row nowrap">
             <label>运行时</label>
-            <input type="text" id="tts-runtime" placeholder="python.exe 路径（自动探测或手动指定）">
+            <input type="text" id="tts-runtime" placeholder="python.exe 路径">
+            <span class="path-flag" id="tts-runtime-flag"></span>
             <button class="ai-btn small" id="tts-pick-runtime">浏览</button>
           </div>
           <div class="ai-row nowrap">
             <label>服务脚本</label>
             <input type="text" id="tts-script" placeholder="api_v2.py 路径">
+            <span class="path-flag" id="tts-script-flag"></span>
             <button class="ai-btn small" id="tts-pick-script">浏览</button>
           </div>
           <div class="ai-row nowrap">
-            <label>语音包目录</label>
+            <label>语音包目录<span class="hint-i" data-tip="留空则用默认位置。自定义目录里应当是 <角色>/emotions.json 的结构。">?</span></label>
             <input type="text" id="tts-voices-dir" placeholder="留空则使用默认位置">
+            <span class="path-flag" id="tts-voices-flag"></span>
             <button class="ai-btn small" id="tts-pick-voices">浏览</button>
           </div>
-          <div class="ai-hint" id="tts-detect-hint"></div>
-
-          <!-- 二、下载与安装 -->
-          <div class="sub-title">下载与安装</div>
           <div class="ai-row">
-            <label>下载源</label>
+            <label>推理设备<span class="hint-i" data-tip="GPU（cuda）：合成快，但占用显存。&#10;CPU：省显存、慢一些，没有 N 卡也能用。">?</span></label>
+            <div class="ai-btns" id="tts-device" style="flex:1;margin:0;">
+              <button class="ai-btn small tts-device-btn" data-device="cuda">GPU（快）</button>
+              <button class="ai-btn small tts-device-btn" data-device="cpu">CPU（省显存）</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 语音页 · 3 下载与安装 ===== -->
+        <div class="ai-card" data-page="voice">
+          <h3>⬇ 下载与安装</h3>
+          <div class="ai-row">
+            <label>下载源<span class="hint-i" data-tip="下载走哪个镜像。&#10;不同网络环境下可用性差别很大 —— 点下面的「检测可用性」会同时测所有源，把延迟直接标在按钮上，然后挑最快的那个。">?</span></label>
             <div class="ai-btns" id="tts-mirror" style="flex:1;margin:0;flex-wrap:wrap;">
               <button class="ai-btn small tts-mirror-btn" data-mirror="official">GitHub 官方</button>
               <button class="ai-btn small tts-mirror-btn" data-mirror="ghproxy">ghproxy</button>
@@ -420,6 +581,13 @@
               <button class="ai-btn small tts-mirror-btn" data-mirror="moeyy">moeyy</button>
               <button class="ai-btn small tts-mirror-btn" data-mirror="llkk">llkk</button>
               <button class="ai-btn small tts-mirror-btn" data-mirror="custom">自定义</button>
+            </div>
+          </div>
+          <div class="ai-row">
+            <label></label>
+            <div class="ai-btns" style="flex:1;margin:0;align-items:center;">
+              <button class="ai-btn small" id="tts-check-mirrors">📶 检测可用性</button>
+              <span class="ai-hint" id="mirror-check-msg"></span>
             </div>
           </div>
           <div class="ai-row nowrap">
@@ -433,80 +601,61 @@
           <div class="ai-btns" style="margin-top:8px;">
             <button class="ai-btn pink small" id="tts-install">⬇ 一键下载推理环境</button>
             <button class="ai-btn small" id="tts-reinstall" style="display:none;">🔄 重新下载</button>
+            <span class="ai-hint" id="tts-install-msg">下载 → 解压 → 探测运行时 → 写入配置</span>
           </div>
-          <div class="ai-hint" id="tts-installed-hint" style="margin-top:6px;"></div>
-          <div class="ai-hint" id="tts-install-msg" style="margin-top:4px;">下载 → 解压 → 探测运行时 → 写入配置（自动切换 v2ProPlus 音色配置）</div>
           <div class="bar-wrap"><div id="tts-install-bar"></div></div>
-          <div class="ai-btns" style="margin-top:8px;">
-            <button class="ai-btn small" id="tts-logs-toggle">📜 后台日志</button>
-            <button class="ai-btn small" id="tts-open-data">📁 数据目录</button>
-            <button class="ai-btn small" id="tts-open-logs">📂 日志文件</button>
-          </div>
-          <pre id="tts-logbox" class="logbox"></pre>
-
-          <!-- 三、角色语音包 -->
-          <div class="sub-title">角色语音包</div>
+          <div class="sub-title">角色语音包<span class="hint-i" data-tip="按需下载：只下载你要用的角色的语音包。&#10;已安装的角色会显示 ✅。">?</span></div>
           <div class="ai-btns" style="margin:0;">
-            <span class="ai-hint">按需下载：</span>
             <button class="ai-btn small tts-voice-btn" data-role="airui">爱芮</button>
             <button class="ai-btn small tts-voice-btn" data-role="qianxia">千夏</button>
             <button class="ai-btn small tts-voice-btn" data-role="nangong">南宫羽</button>
           </div>
+        </div>
 
-          <!-- 四、朗读设置 -->
-          <div class="sub-title">朗读设置</div>
-          <div class="ai-row check"><label>聊天回复朗读</label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复自动转语音</span></div>
-          <div class="ai-row check"><label>待机台词朗读</label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词（较频繁）</span></div>
-          <div class="ai-row check"><label>互聊朗读</label><input type="checkbox" id="tts-on-chatter"><span class="ai-hint">角色互聊内容</span></div>
-          <div class="ai-row check"><label>按角色分目录</label><input type="checkbox" id="tts-by-role"><span class="ai-hint">音频按角色存放，文件名含情绪与台词片段</span></div>
+        <!-- ===== 语音页 · 4 朗读设置 ===== -->
+        <div class="ai-card" data-page="voice">
+          <h3>🔊 朗读设置</h3>
+          <div class="ai-row check"><label>聊天回复朗读<span class="hint-i" data-tip="AI 聊天回复自动转成语音播放。">?</span></label><input type="checkbox" id="tts-on-chat"><span class="ai-hint">AI 回复</span></div>
+          <div class="ai-row check"><label>待机台词朗读<span class="hint-i" data-tip="三小只待机气泡台词也朗读（比较频繁，可能有点吵）。">?</span></label><input type="checkbox" id="tts-on-bubble"><span class="ai-hint">气泡台词</span></div>
+          <div class="ai-row check"><label>互聊朗读<span class="hint-i" data-tip="三小只互相聊天的内容也朗读。">?</span></label><input type="checkbox" id="tts-on-chatter"><span class="ai-hint">角色互聊</span></div>
+          <div class="ai-row check"><label>按角色分目录<span class="hint-i" data-tip="生成的音频按角色分目录存放，文件名里带情绪与台词片段，方便事后翻找。">?</span></label><input type="checkbox" id="tts-by-role"><span class="ai-hint">音频分类存放</span></div>
           <div class="ai-row nowrap">
-            <label>空闲卸载</label>
+            <label>空闲卸载<span class="hint-i" data-tip="多少秒没有合成请求就自动停掉服务，释放显存 / 内存。&#10;下一次需要时会自动重新拉起（首次加载模型约 1~3 分钟）。">?</span></label>
             <input type="text" id="tts-idle" style="max-width:80px;">
-            <span class="ai-hint">秒（无请求后自动停止服务以释放显存）</span>
+            <span class="ai-hint">秒（无请求后自动停止服务）</span>
           </div>
-          <div class="ai-btns" style="margin-top:6px;">
-            <button class="ai-btn small" id="tts-open-cache">📂 打开音频目录</button>
-          </div>
+        </div>
 
-          <!-- 五、高级 -->
-          <div class="sub-title">高级</div>
+        <!-- ===== 语音页 · 5 高级 ===== -->
+        <div class="ai-card" data-page="voice">
+          <h3>🛠 高级<span class="hint-i" data-tip="请求参数模板：不同版本的 GPT-SoVITS / 自研服务接口不一样时，在这里改就能适配，不用等更新。&#10;留空即使用默认值。">?</span></h3>
           <div class="ai-row" style="align-items:flex-start;">
             <label>请求参数</label>
             <textarea id="tts-adv" class="adv-area" placeholder='{"apiPath":"/tts","params":{...},"extraBody":{...}}'></textarea>
           </div>
           <div class="ai-hint" id="tts-url-preview"></div>
-
-          <div class="ai-btns" style="margin-top:10px;">
-            <button class="ai-btn pink small" id="tts-save">💾 保存并应用</button>
-            <button class="ai-btn small" id="tts-probe">🔍 探测服务</button>
-            <button class="ai-btn small" id="tts-start">▶ 启动服务</button>
-            <button class="ai-btn small" id="tts-stop">■ 停止服务</button>
-          </div>
         </div>
-        <div class="ai-card">
+        <div class="ai-card" id="card-display" data-page="settings">
           <h3>🖼 显示兼容</h3>
           <div class="ai-row check">
-            <label>窗口区域裁剪</label>
+            <label>关闭 GPU 合成<span class="hint-i" data-tip="黑块的实测有效修复：只把「图层合成」交给 CPU，光栅化 / 2D / WebGL 仍留在 GPU，性能代价很小。&#10;&#10;混合显卡笔记本（例如 AMD 核显 + NVIDIA 独显）上，显示由核显输出、渲染由独显负责；走独显的 GPU 合成路径时透明窗口的 alpha 会丢失，透明区域被画成黑色 —— 也就是「角色周围的黑块」，关掉窗口区域裁剪则整窗全黑。&#10;&#10;改完需重启桌宠。">?</span></label>
+            <input type="checkbox" id="ui-fix-nogpucomp">
+            <span class="ai-hint">黑块首选修复</span>
+          </div>
+          <div class="ai-row check">
+            <label>关闭硬件加速<span class="hint-i" data-tip="全部改走软件渲染：更彻底，但 CPU 占用会明显上升、笔记本更费电。&#10;只有在「关闭 GPU 合成」仍消不掉黑块时才需要用。&#10;&#10;改完需重启桌宠。">?</span></label>
+            <input type="checkbox" id="ui-fix-disablegpu">
+            <span class="ai-hint">更彻底，更耗 CPU</span>
+          </div>
+          <div class="ai-row check">
+            <label>窗口区域裁剪<span class="hint-i" data-tip="把窗口裁成只包住三小只的形状。&#10;&#10;它是早期对黑块的缓解手段 —— 实测只能把黑块「遮小」（仍占 15%），并不能修好；关闭它反而会让整窗发黑（33%）。所以黑块的正确解法是上面的「关闭 GPU 合成」，这一项保持开启即可。&#10;&#10;关闭的代价：窗口按整块矩形参与显示，可能重现「播放视频时窗口黑屏」。">?</span></label>
             <input type="checkbox" id="ui-region">
-            <span class="ai-hint">关闭后窗口按整块矩形参与显示（重启生效）</span>
+            <span class="ai-hint">早期缓解手段，一般保持开启</span>
           </div>
-          <div class="ai-hint" id="ui-region-hint">
-            若角色周围出现<strong>黑色矩形块</strong>，可关闭此项后重启软件：该现象由窗口形状裁剪在部分显卡 / 驱动 / 系统设置下引起；
-            关闭的代价是可能重现「播放视频时窗口黑屏」。
-          </div>
-          <div class="ai-btns" style="margin-top:6px;">
-            <button class="ai-btn small" id="ui-open-config">📂 打开配置目录</button>
-            <button class="ai-btn small" id="ui-open-logs">📂 打开日志文件</button>
-            <button class="ai-btn small" id="ui-copy-diag">📋 复制诊断信息</button>
-          </div>
-          <div class="ai-hint" style="margin-top:10px;">
-            <strong>窗口显示异常排查</strong>（整块变黑 / 角色周围黑块）：以下开关默认关闭，<strong>改完需重启桌宠</strong>；若透明窗口在个别显卡驱动上失效，可逐个尝试。
-          </div>
-          <div class="ai-row check"><label>保留视频叠加特性</label><input type="checkbox" id="ui-fix-nodcompfeature"><span class="ai-hint">不禁用 DirectComposition 视频叠加</span></div>
-          <div class="ai-row check"><label>保留 DComp 开关</label><input type="checkbox" id="ui-fix-nodcompswitch"><span class="ai-hint">不追加 --disable-direct-composition-video-overlays</span></div>
-          <div class="ai-row check"><label>关闭硬件加速</label><input type="checkbox" id="ui-fix-disablegpu"><span class="ai-hint">改用软件合成（更稳但更耗 CPU）</span></div>
+          <div class="ai-hint" id="ui-region-hint"></div>
+          <div class="ai-hint" id="ui-gpu-hint" style="display:none;color:#b4557a;"></div>
         </div>
-        <div class="ai-card">
+        <div class="ai-card" data-page="settings">
           <h3>🖥 多显示器</h3>
           <div class="ai-row" style="align-items:flex-start;">
             <label>运行屏幕</label>
@@ -518,7 +667,7 @@
           </div>
           <div class="ai-hint" id="set-screen-hint" style="margin-top:8px;">检测中…</div>
         </div>
-        <div class="ai-card">
+        <div class="ai-card" data-page="settings">
           <h3>⚙ 性能设置</h3>
           <div class="ai-row">
             <label>最大帧率</label>
@@ -532,8 +681,71 @@
           </div>
         </div>
       </div>
+
+      <!-- ============ 控制台视图：信息页 ←→ 终端页（再点一次侧边栏按钮切换） ============ -->
+      <div id="view-console" class="view" style="display:none;">
+        <div class="console-cards">
+        <div class="ai-card" data-page="console">
+          <h3>📊 运行状态</h3>
+          <div class="kv-grid" id="console-runtime">
+            <div class="kv"><span>桌宠版本</span><b id="cs-version">—</b></div>
+            <div class="kv"><span>语音服务</span><b id="cs-tts">—</b></div>
+            <div class="kv"><span>登录自启</span><b id="cs-autolaunch">—</b></div>
+            <div class="kv"><span>运行屏幕</span><b id="cs-screen">—</b></div>
+          </div>
+          <div class="ai-btns" style="margin-top:10px;">
+            <button class="ai-btn small" id="cs-refresh">🔄 刷新</button>
+            <button class="ai-btn pink small" id="cs-copy-diag">📋 复制诊断信息</button>
+          </div>
+          <div class="ai-hint" id="cs-copy-msg" style="margin-top:6px;"></div>
+        </div>
+
+        <div class="ai-card" data-page="console">
+          <h3>🖥 系统与显卡<span class="hint-i" data-tip="这些是排查显示问题时最有用的信息，复制诊断信息时会一并带上。">?</span></h3>
+          <div class="kv-grid" id="console-sys">
+            <div class="kv"><span>操作系统</span><b id="cs-os">—</b></div>
+            <div class="kv"><span>显卡</span><b id="cs-gpu">—</b></div>
+            <div class="kv"><span>混合显卡</span><b id="cs-hybrid">—</b></div>
+            <div class="kv"><span>系统透明效果</span><b id="cs-transparency">—</b></div>
+            <div class="kv wide"><span>运行环境</span><b id="cs-runtime">—</b></div>
+            <div class="kv"><span>运行模式</span><b id="cs-mode">—</b></div>
+          </div>
+          <div class="ai-hint" id="cs-fix" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="ai-card" data-page="console">
+          <h3>📜 日志与目录<span class="hint-i" data-tip="想看实时滚动的后台日志？点下面的「终端模式」，或者再点一次左侧的「控制台」按钮。&#10;日志文件本身在 数据目录/logs/app.log，1MB 自动轮转。">?</span></h3>
+          <div class="ai-btns" style="margin:0;">
+            <button class="ai-btn pink small" id="cs-term">🖥 终端模式</button>
+            <button class="ai-btn small" id="tts-open-logs">📂 日志文件</button>
+            <button class="ai-btn small" id="ui-open-config">📂 配置目录</button>
+            <button class="ai-btn small" id="tts-open-data">📁 数据目录</button>
+          </div>
+        </div>
+        </div><!-- /console-cards -->
+
+        <!-- 终端模式：像 cmd 一样直接刷后台日志，按等级上色 -->
+        <div id="console-term" class="term-wrap">
+          <div class="term-bar">
+            <span class="term-dot" style="background:#ff5f57"></span>
+            <span class="term-dot" style="background:#febc2e"></span>
+            <span class="term-dot" style="background:#28c840"></span>
+            <span class="term-title">妄想天使桌宠 · 后台终端</span>
+            <span class="term-tip">再点一次左侧「控制台」切回信息页</span>
+          </div>
+          <div id="term-body" class="term-body"></div>
+        </div>
+      </div>
+    </div>
+    <div id="fab-save" title="保存当前页的修改（立即生效）">
+      <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 6 A2 2 0 0 1 6 4 H15.5 L20 8.5 V18 A2 2 0 0 1 18 20 H6 A2 2 0 0 1 4 18 Z"/>
+        <path d="M8 4 V9 H14.5 V4"/>
+        <path d="M7.5 20 V13.5 H16.5 V20"/>
+      </svg>
     </div>
   </div>
+  <div id="tip"></div>
   <script src="panel.js"></script>
 </body>
 </html>

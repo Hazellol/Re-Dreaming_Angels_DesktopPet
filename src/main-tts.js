@@ -101,12 +101,30 @@ function createTtsManager(ctx) {
     } catch (e) { /* noop */ }
     if (level !== 'DEBUG') console.log('[TTS][' + level + ']', msg);
   }
-  function readLogs(maxLines) {
+  // 本次启动时日志文件的长度：终端只显示"本次启动之后"写进去的日志。
+  // （以前终端会把上一次甚至上几次运行的日志一起滚出来，用户反馈"每次启动应该从头记"。）
+  let startupLogOffset = 0;
+  try {
+    const _lf = logFilePath();
+    if (fsMod.existsSync(_lf)) startupLogOffset = fsMod.statSync(_lf).size;
+  } catch (e) { /* noop */ }
+  function readLogs(maxLines, sinceStart) {
     try {
       const f = logFilePath();
       if (!fsMod.existsSync(f)) return '(暂无日志)';
-      const lines = fsMod.readFileSync(f, 'utf8').replace(/\r/g, '').split('\n');
-      return lines.slice(-(maxLines || 300)).join('\n').trim() || '(暂无日志)';
+      let txt;
+      if (sinceStart) {
+        const buf = fsMod.readFileSync(f);
+        // 文件长度比启动时小 → 中途发生轮转，直接给整份（新的）日志
+        txt = (startupLogOffset > 0 && buf.length > startupLogOffset)
+          ? buf.slice(startupLogOffset).toString('utf8')
+          : buf.toString('utf8');
+      } else {
+        txt = fsMod.readFileSync(f, 'utf8');
+      }
+      const lines = txt.replace(/\r/g, '').split('\n');
+      const out = lines.slice(-(maxLines || 300)).join('\n').trim();
+      return out || (sinceStart ? '(本次启动暂无日志)' : '(暂无日志)');
     } catch (e) { return '(读取失败: ' + (e && e.message) + ')'; }
   }
   let cfgPath = pathMod.join(userData, 'tts_config.json');
@@ -424,6 +442,7 @@ function createTtsManager(ctx) {
   function status() {
     // 服务状态机：disabled（总开关关）/ running / starting（已拉起进程但还没监听）/ stopped
     const state = !cfg.enabled ? 'disabled' : (lastStatus.running ? 'running' : (proc ? 'starting' : 'stopped'));
+    const rp = runtimeProbe();
     return {
       running: !!lastStatus.running,
       serviceState: state,
@@ -435,7 +454,8 @@ function createTtsManager(ctx) {
       dataRoot: dataRoot(),
       voicesRoot: voicesRoot(),
       logsFile: logFilePath(),
-      installed: { runtime: isRuntimeInstalled(), voices: { airui: isVoiceInstalled('airui'), qianxia: isVoiceInstalled('qianxia'), nangong: isVoiceInstalled('nangong') } },
+      installed: { runtime: rp.installed, voices: { airui: isVoiceInstalled('airui'), qianxia: isVoiceInstalled('qianxia'), nangong: isVoiceInstalled('nangong') } },
+      runtime: rp,          // 侦探细信息：装在哪、检查了哪些路径（界面用它显示"实际用的是哪一套"）
       hasVoices: ['airui', 'qianxia', 'nangong'].some((r) => !!loadEmotions(r)),
       // 仅在"确实探测失败且未在启动中"时提示错误，避免未运行时一直显示陈旧的连接错误
       lastError: (state === 'stopped' && lastStatus.checkedAt && lastStatus.lastError) ? lastStatus.lastError : '',
@@ -444,15 +464,44 @@ function createTtsManager(ctx) {
   }
 
   // ===== 安装状态检测（避免用户重复下载 6GB+）=====
-  function isRuntimeInstalled() {
-    try {
-      return fsMod.existsSync(pathMod.join(dataRoot(), 'runtime', 'python.exe')) &&
-             fsMod.existsSync(pathMod.join(dataRoot(), 'api_v2.py'));
-    } catch (e) { return false; }
+  // 【历史 bug / 用户实测反馈】这里以前只查"托管目录"下的固定路径：
+  //     dataRoot()/runtime/python.exe + dataRoot()/api_v2.py
+  // 完全无视用户已经配置好的 runtimePath / serverScript —— 于是"环境明明装好了、
+  // 路径也填对了，界面却一直显示未安装"。
+  // 现在按"启动服务时实际会用哪一套"来判定：**先看配置，再看托管目录与历史兼容目录**。
+  function runtimeProbe() {
+    const pairs = [];
+    if (cfg.runtimePath || cfg.serverScript) {
+      pairs.push({ python: cfg.runtimePath || '', script: cfg.serverScript || '', source: '配置的路径' });
+    }
+    pairs.push({
+      python: pathMod.join(dataRoot(), 'runtime', 'python.exe'),
+      script: pathMod.join(dataRoot(), 'api_v2.py'),
+      source: '托管数据目录'
+    });
+    if (legacyTtsDir !== dataRoot()) {
+      pairs.push({
+        python: pathMod.join(legacyTtsDir, 'runtime', 'python.exe'),
+        script: pathMod.join(legacyTtsDir, 'api_v2.py'),
+        source: '历史数据目录'
+      });
+    }
+    const checked = [];
+    for (const p of pairs) {
+      let okPy = false, okSc = false;
+      try { okPy = !!p.python && fsMod.existsSync(p.python); } catch (e) { okPy = false; }
+      try { okSc = !!p.script && fsMod.existsSync(p.script); } catch (e) { okSc = false; }
+      checked.push({ source: p.source, python: p.python, script: p.script, pythonOk: okPy, scriptOk: okSc });
+      if (okPy && okSc) return { installed: true, source: p.source, python: p.python, script: p.script, checked: checked };
+    }
+    return {
+      installed: false, source: '',
+      python: cfg.runtimePath || pathMod.join(dataRoot(), 'runtime', 'python.exe'),
+      script: cfg.serverScript || pathMod.join(dataRoot(), 'api_v2.py'),
+      checked: checked
+    };
   }
-  function runtimeDirCandidates() {
-    return [pathMod.join(dataRoot(), 'runtime', 'python.exe'), pathMod.join(legacyTtsDir, 'runtime', 'python.exe')];
-  }
+  function isRuntimeInstalled() { return runtimeProbe().installed; }
   function isVoiceInstalled(role) {
     try {
       return voicesCandidates().some((c) => fsMod.existsSync(pathMod.join(c, role, 'emotions.json')));
@@ -597,6 +646,64 @@ function createTtsManager(ctx) {
     moeyy: 'https://github.moeyy.xyz/',
     llkk: 'https://gh.llkk.cc/'
   };
+  // ===== 下载源可用性检测（一键测所有镜像，让用户一眼看出该选哪个）=====
+  // 用「Range: bytes=0-0」只取 1 字节：能连上就算可用，同时量出延迟；
+  // 不用 HEAD —— 部分镜像/对象存储不支持 HEAD，会假阴性。
+  function probeUrlOnce(url, timeoutMs) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      let done = false;
+      const finish = (ok, extra) => {
+        if (done) return;
+        done = true;
+        resolve(Object.assign({ ok: ok, ms: Date.now() - t0 }, extra || {}));
+      };
+      try {
+        const mod = url.indexOf('https:') === 0 ? require('https') : http;
+        const req = mod.request(url, {
+          method: 'GET',
+          headers: { Range: 'bytes=0-0', 'User-Agent': 'ReDreamingAngels-DesktopPet' },
+          timeout: timeoutMs
+        }, (res) => {
+          const code = res.statusCode || 0;
+          try { res.destroy(); } catch (e) { /* noop */ }
+          finish(code < 400, { status: code });
+        });
+        req.on('timeout', () => { try { req.destroy(); } catch (e) { /* noop */ } finish(false, { error: '超时' }); });
+        req.on('error', (e) => finish(false, { error: (e && e.message) || '连接失败' }));
+        req.end();
+      } catch (e) {
+        finish(false, { error: (e && e.message) || '请求异常' });
+      }
+    });
+  }
+  async function checkMirrors(patch) {
+    const keys = ['repoUrl', 'runtimeTag', 'runtimeParts'];
+    const backup = {};
+    if (patch) for (const k of keys) { if (patch[k] !== undefined) { backup[k] = cfg[k]; cfg[k] = patch[k]; } }
+    try {
+      const base = repoBase();
+      if (!base) return { ok: false, error: '还没填仓库地址（在「下载与安装」里填 GitHub 仓库地址）', results: [] };
+      const target = base + '/releases/download/' + cfg.runtimeTag + '/tts-runtime-part1.zip';
+      const items = [{ id: 'official', name: 'GitHub 官方' }];
+      for (const k of Object.keys(MIRRORS)) {
+        if (k === 'official' || !MIRRORS[k]) continue;
+        items.push({ id: k, name: k, prefix: MIRRORS[k] });
+      }
+      const results = await Promise.all(items.map(async (it) => {
+        const r = await probeUrlOnce((it.prefix || '') + target, 8000);
+        return { id: it.id, name: it.name, ok: !!r.ok, ms: r.ms || 0, status: r.status || 0, error: r.error || '' };
+      }));
+      if (cfg.mirrorCustom) {
+        const r = await probeUrlOnce(String(cfg.mirrorCustom) + target, 8000);
+        results.push({ id: 'custom', name: '自定义', ok: !!r.ok, ms: r.ms || 0, status: r.status || 0, error: r.error || '' });
+      }
+      const okList = results.filter((x) => x.ok).slice().sort((a, b) => a.ms - b.ms);
+      return { ok: true, results: results, fastest: okList.length ? okList[0].id : '' };
+    } finally {
+      for (const k of Object.keys(backup)) cfg[k] = backup[k];
+    }
+  }
   function mirrorPrefix() {
     if (cfg.mirror === 'custom') return cfg.mirrorCustom || '';
     return MIRRORS[cfg.mirror] || '';
@@ -773,7 +880,7 @@ function createTtsManager(ctx) {
     ipcMain.handle('tts-install', (e, arg) => installFromUrl((arg && arg.urls) || arg || buildRuntimeUrls(), { force: !!(arg && arg.force) }));
     ipcMain.handle('tts-install-runtime', (e, opts) => installFromUrl(buildRuntimeUrls(), { force: !!(opts && opts.force) }));
     ipcMain.handle('tts-install-voice', (e, role, opts) => installVoice(String(role || ''), { force: !!(opts && opts.force) }));
-    ipcMain.handle('tts-get-logs', (e, lines) => readLogs(lines || 300));
+    ipcMain.handle('tts-get-logs', (e, lines, sinceStart) => readLogs(lines || 300, !!sinceStart));
     ipcMain.handle('tts-open-logs', () => {
       try {
         const { shell } = require('electron');
@@ -825,7 +932,27 @@ function createTtsManager(ctx) {
         return { ok: true, dir: picked, runtimePath: det.python, serverScript: det.script, status: status() };
       } catch (err) { return { ok: false, error: err && err.message }; }
     });
-    ipcMain.handle('tts-urls', () => ({ runtime: buildRuntimeUrls(), voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') } }));
+    // 用一份"临时配置"构造下载地址（**不落盘**）。
+  // 以前预览是先把整份配置存盘再读回来算的 —— 用户只是点一下下载源就被悄悄保存了。
+  function buildUrlsWith(patch) {
+    const keys = ['repoUrl', 'mirror', 'mirrorCustom', 'runtimeParts', 'runtimeTag'];
+    const backup = {};
+    if (patch) {
+      for (const k of keys) {
+        if (patch[k] !== undefined) { backup[k] = cfg[k]; cfg[k] = patch[k]; }
+      }
+    }
+    try {
+      return {
+        runtime: buildRuntimeUrls(),
+        voices: { airui: buildVoiceUrl('airui'), qianxia: buildVoiceUrl('qianxia'), nangong: buildVoiceUrl('nangong') }
+      };
+    } finally {
+      for (const k of Object.keys(backup)) cfg[k] = backup[k];
+    }
+  }
+  ipcMain.handle('tts-urls', (e, patch) => buildUrlsWith(patch));
+  ipcMain.handle('tts-check-mirrors', (e, patch) => checkMirrors(patch));
     ipcMain.handle('tts-check-update', () => checkUpdate());
     ipcMain.handle('open-external', (e, url) => { try { require('electron').shell.openExternal(String(url || '')); return { ok: true }; } catch (err) { return { ok: false, error: err && err.message }; } });
     ipcMain.handle('tts-install-state', () => installState);

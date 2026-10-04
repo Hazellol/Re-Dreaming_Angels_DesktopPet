@@ -19,3 +19,20 @@ tts_out/
 
 # TTS runtime data (huge: portable python + models; created at runtime in project folder)
 tts/
+# 番茄钟/截图调试产物
+_shot.log
+_shotdata/
+_*.rgba
+pomo-*.png
+# 开发文档（只保留 README / CHANGELOG 这类给使用者看的）
+IMPLEMENTATION_NOTES.md
+PROJECT_MASTER_DOC.md
+TTS_DESIGN.md
+TTS_PACKAGING.md
+TTS_TROUBLESHOOTING.md
+# 调试产物与工具脚本
+tools/
+_bak*.js
+_bak*.html
+_rec*.js
+*.raw
